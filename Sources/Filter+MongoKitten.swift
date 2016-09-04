@@ -9,7 +9,12 @@ extension Fluent.Filter {
         case .compare(let key, let comparison, let val):
             switch comparison {
             case .equals:
-                query = MongoKitten.Query(aqt: .valEquals(key: key, val: val.bson))
+                if let objId = try? ObjectId(val.bson.string), key == "_id" {
+                    let value = Value.objectId(objId)
+                    query = MongoKitten.Query(aqt: .valEquals(key: key, val: value))
+                } else {
+                    query = MongoKitten.Query(aqt: .valEquals(key: key, val: val.bson))
+                }
             case .greaterThan:
                 query = MongoKitten.Query(aqt: .greaterThan(key: key, val: val.bson))
             case .lessThan:
