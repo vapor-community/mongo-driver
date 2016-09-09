@@ -26,11 +26,11 @@ extension Fluent.Filter {
             case .notEquals:
                 query = MongoKitten.Query(aqt: .valNotEquals(key: key, val: val.bson))
             case .contains:
-                query = MongoKitten.Query(aqt: .contains(key: key, val: val.bson))
+                query = MongoKitten.Query(aqt: .contains(key: key, val: val.bson.string))
             case .hasPrefix:
-                query = MongoKitten.Query(aqt: .startsWith(key: key, val: val.bson))
+                query = MongoKitten.Query(aqt: .startsWith(key: key, val: val.bson.string))
             case .hasSuffix:
-                query = MongoKitten.Query(aqt: .endsWith(key: key, val: val.bson))
+                query = MongoKitten.Query(aqt: .endsWith(key: key, val: val.bson.string))
             }
         case .subset(let key, let scope, let values):
             switch scope {
