@@ -13,19 +13,47 @@ import Fluent
     - port: 27017
 */
 class DriverTests: XCTestCase {
-    static var allTests : [(String, DriverTests -> () throws -> Void)] {
+    static var allTests : [(String, (DriverTests) -> () throws -> Void)] {
         return [
-            ("testConnecting", testConnecting),
             ("testConnectFailing", testConnectFailing),
+            ("testSaveAndFind", testSaveAndFind)
         ]
     }
-
-    func testConnecting() {
+    
+    
+    var database: Fluent.Database!
+    var driver: MongoDriver!
+    
+    override func setUp() {
+        driver = MongoDriver.makeTestConnection()
+        database = Database(driver)
+        clearUserCollection()
+    }
+    
+    func clearUserCollection() {
+        let _ = try? database.delete(User.entity)
+    }
+    
+    func createUser() -> User {
+        var user = User(id: nil, name: "Vapor", email: "vapor@qutheory.io")
+        User.database = database
+        
         do {
-            let _ = try MongoDriver(database: "test", user: "test", password: "test", host: "localhost", port: 27017)
+            try user.save()
+            print("JUST SAVED")
         } catch {
-            XCTFail("Failed to connect: \(error)")
+            XCTFail("Could not save: \(error)")
         }
+        return user
+    }
+    
+    func testSaveAndClearUsers() {
+        let _ = createUser()
+        var all = try? User.all()
+        XCTAssert(all?.count == 1)
+        clearUserCollection()
+        all = try? User.all()
+        XCTAssert(all?.count == 0)
     }
 
     func testConnectFailing() {
@@ -33,8 +61,27 @@ class DriverTests: XCTestCase {
             let _ = try MongoDriver(database: "test", user: "test", password: "test", host: "localhost", port: 500)
             XCTFail("Should not connect.")
         } catch {
-            //
+            // This should fail.
         }
     }
-
+    
+    func testSaveAndFind() {
+        let user = createUser()
+        
+        do {
+            let found = try User.find(user.id!)
+            XCTAssertEqual(found?.id?.string, user.id?.string)
+            XCTAssertEqual(found?.name, user.name)
+            XCTAssertEqual(found?.email, user.email)
+        } catch {
+            XCTFail("Could not find user: \(error)")
+        }
+        
+        do {
+            let user = try User.find(2)
+            XCTAssertNil(user)
+        } catch {
+            XCTFail("Could not find user: \(error)")
+        }
+    }
 }

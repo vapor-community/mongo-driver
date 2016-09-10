@@ -46,7 +46,11 @@ public class MongoDriver: Fluent.Driver {
             return try items.makeNode()
         case .create:
             let document = try insert(query)
-            return convert(document: document)
+            if let documentId = getId(document: document) {
+                return documentId
+            } else {
+                throw MongoError.insertFailure(documents: [document], error: nil)
+            }
         case .delete:
             try delete(query)
             return Node.null
@@ -56,7 +60,13 @@ public class MongoDriver: Fluent.Driver {
     }
     
     public func schema(_ schema: Schema) throws {
-        // No schemas in Mongo
+        switch schema {
+        case .delete(let entity):
+            try database[entity].drop()
+        default:
+            return
+            // No schemas in Mongo to modify or create
+        }
     }
     
     public func raw(_ raw: String, _ values: [Node]) throws -> Node {
@@ -64,9 +74,13 @@ public class MongoDriver: Fluent.Driver {
     }
 
     // MARK: Private
-
+    
     private func convert(document: Document) -> Node {
         return document.makeBsonValue().node
+    }
+
+    private func getId(document: Document) -> Node? {
+        return convert(document: document)[idKey]
     }
 
     private func delete<T: Entity>(_ query: Fluent.Query<T>) throws {
