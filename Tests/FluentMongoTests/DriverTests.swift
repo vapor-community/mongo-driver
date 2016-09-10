@@ -16,6 +16,7 @@ class DriverTests: XCTestCase {
     static var allTests : [(String, (DriverTests) -> () throws -> Void)] {
         return [
             ("testConnectFailing", testConnectFailing),
+            ("testSaveAndClearUsers", testSaveAndClearUsers),
             ("testSaveAndFind", testSaveAndFind)
         ]
     }
