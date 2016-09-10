@@ -26,7 +26,7 @@ mongod
 When setting up your droplet, create a database using a MongoDriver instance and pass it into the Droplet intializer.
 
 ```
-let mongo = try! MongoDriver(
+let mongo = try MongoDriver(
 	database: "test",
 	user: "user1",
 	password: "pswd1",

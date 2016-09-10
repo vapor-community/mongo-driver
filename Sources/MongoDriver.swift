@@ -4,9 +4,9 @@ import MongoKitten
 public class MongoDriver: Fluent.Driver {
     
     /**
-     Describes the types of errors
-     this driver can throw.
-     */
+        Describes the types of errors
+        this driver can throw.
+    */
     public enum Error: Swift.Error {
         case unsupported(String)
     }
@@ -14,9 +14,9 @@ public class MongoDriver: Fluent.Driver {
     let database: MongoKitten.Database
     
     /**
-     Creates a new `MongoDriver` with
-     the given database name, credentials, and port.
-     */
+        Creates a new `MongoDriver` with
+        the given database name, credentials, and port.
+    */
     public init(database: String, user: String, password: String, host: String, port: Int) throws {
         let server = try Server("mongodb://\(user):\(password)@\(host):\(port)", automatically: true)
         self.database = server[database]
@@ -25,13 +25,13 @@ public class MongoDriver: Fluent.Driver {
     // MARK: All the Driver protocol implementations
 
     /**
-     MongoDB uses `_id` as the main identifier.
-     */
+        MongoDB uses `_id` as the main identifier.
+    */
     public var idKey: String = "_id"
     
     /**
-     Executes a query on the current MongoDB database.
-     */
+        Executes a query on the current MongoDB database.
+    */
     public func query<T : Entity>(_ query: Fluent.Query<T>) throws -> Node {
         print("Mongo executing: \(query)")
         
@@ -46,11 +46,7 @@ public class MongoDriver: Fluent.Driver {
             return try items.makeNode()
         case .create:
             let document = try insert(query)
-            if let document = document {
-                return convert(document: document)
-            } else {
-                throw Error.unsupported("Couldn't create it I guess")
-            }
+            return convert(document: document)
         case .delete:
             try delete(query)
             return Node.null
@@ -60,11 +56,11 @@ public class MongoDriver: Fluent.Driver {
     }
     
     public func schema(_ schema: Schema) throws {
-        throw Error.unsupported("MONGO DOESNT HAVE SCHEMA RIGHT?")
+        // No schemas in Mongo
     }
     
     public func raw(_ raw: String, _ values: [Node]) throws -> Node {
-        throw Error.unsupported("Does MongoKitten allow this?")
+        throw Error.unsupported("Mongo does not support raw queries.")
     }
 
     // MARK: Private
@@ -81,9 +77,9 @@ public class MongoDriver: Fluent.Driver {
         }
     }
 
-    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> Document? {
+    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> Document {
         guard let data = query.data?.nodeObject else {
-            return nil
+            throw Error.unsupported("No data to insert")
         }
         var document: Document = [:]
         
