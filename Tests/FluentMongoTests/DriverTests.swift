@@ -16,11 +16,9 @@ class DriverTests: XCTestCase {
     static var allTests : [(String, (DriverTests) -> () throws -> Void)] {
         return [
             ("testConnectFailing", testConnectFailing),
-            ("testSaveAndClearUsers", testSaveAndClearUsers),
-            ("testSaveAndFind", testSaveAndFind)
+            ("testSaveClearFind", testSaveClearFind),
         ]
     }
-    
     
     var database: Fluent.Database!
     var driver: MongoDriver!
@@ -47,15 +45,6 @@ class DriverTests: XCTestCase {
         }
         return user
     }
-    
-    func testSaveAndClearUsers() {
-        let _ = createUser()
-        var all = try? User.all()
-        XCTAssert(all?.count == 1)
-        clearUserCollection()
-        all = try? User.all()
-        XCTAssert(all?.count == 0)
-    }
 
     func testConnectFailing() {
         do {
@@ -66,9 +55,17 @@ class DriverTests: XCTestCase {
         }
     }
     
-    func testSaveAndFind() {
-        let user = createUser()
+    func testSaveClearFind() {
+        // Test inserting a record then dropping the collection
+        let _ = createUser()
+        var all = try? User.all()
+        XCTAssert(all?.count == 1)
+        clearUserCollection()
+        all = try? User.all()
+        XCTAssert(all?.count == 0)
         
+        // Test finding record by id
+        let user = createUser()
         do {
             let found = try User.find(user.id!)
             XCTAssertEqual(found?.id?.string, user.id?.string)
