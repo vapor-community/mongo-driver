@@ -2,81 +2,88 @@ import Fluent
 import MongoKitten
 
 public class MongoDriver: Fluent.Driver {
-    /**
-        MongoDB uses `_id` as the main identifier.
-    */
-    public var idKey: String = "_id"
-
+    
     /**
         Describes the types of errors
         this driver can throw.
     */
-    public enum Error: ErrorProtocol {
+    public enum Error: Swift.Error {
         case unsupported(String)
     }
     
-    var database: MongoKitten.Database
-
+    let database: MongoKitten.Database
+    
     /**
         Creates a new `MongoDriver` with
-        the given database name, credentials, and port. 
+        the given database name, credentials, and port.
     */
     public init(database: String, user: String, password: String, host: String, port: Int) throws {
         let server = try Server("mongodb://\(user):\(password)@\(host):\(port)", automatically: true)
         self.database = server[database]
     }
     
+    // MARK: All the Driver protocol implementations
+
+    /**
+        MongoDB uses `_id` as the main identifier.
+    */
+    public var idKey: String = "_id"
+    
     /**
         Executes a query on the current MongoDB database.
     */
-    public func execute<T: Model>(_ query: Fluent.Query<T>) throws -> [[String: Fluent.Value]] {
-        var items: [[String: Fluent.Value]] = []
-
+    public func query<T : Entity>(_ query: Fluent.Query<T>) throws -> Node {
         print("Mongo executing: \(query)")
-
+        
         switch query.action {
         case .fetch:
             let cursor = try select(query)
+            var items: [Node] = []
             for document in cursor {
-                let item = convert(document: document)
-                items.append(item)
+                let i = convert(document: document)
+                items.append(i)
             }
+            return try items.makeNode()
         case .create:
             let document = try insert(query)
-            if let document = document {
-                let item = convert(document: document)
-                items.append(item)
+            if let documentId = getId(document: document) {
+                return documentId
+            } else {
+                throw MongoError.insertFailure(documents: [document], error: nil)
             }
         case .delete:
             try delete(query)
+            return Node.null
         default:
             throw Error.unsupported("Action \(query.action) is not yet supported.")
         }
-
-        return items
     }
-
-    /**
-        Provides a closure for executing raw, unsafe
-        queries on the Mongo database.
-    */
-    public func raw(closure: (MongoKitten.Database) -> Document) -> Document {
-        return closure(database)
-    }
-
-    //MARK: Private
-
-    private func convert(document: Document) -> [String: Fluent.Value] {
-        var item: [String: Fluent.Value] = [:]
-
-        document.forEach { key, val in
-            item[key] = val.structuredData
+    
+    public func schema(_ schema: Schema) throws {
+        switch schema {
+        case .delete(let entity):
+            try database[entity].drop()
+        default:
+            return
+            // No schemas in Mongo to modify or create
         }
-
-        return item
+    }
+    
+    public func raw(_ raw: String, _ values: [Node]) throws -> Node {
+        throw Error.unsupported("Mongo does not support raw queries.")
     }
 
-    private func delete<T: Model>(_ query: Fluent.Query<T>) throws {
+    // MARK: Private
+    
+    private func convert(document: Document) -> Node {
+        return document.makeBsonValue().node
+    }
+
+    private func getId(document: Document) -> Node? {
+        return convert(document: document)[idKey]
+    }
+
+    private func delete<T: Entity>(_ query: Fluent.Query<T>) throws {
         if let q = query.mongoKittenQuery {
             try database[query.entity].remove(matching: q)
         } else {
@@ -84,21 +91,20 @@ public class MongoDriver: Fluent.Driver {
         }
     }
 
-    private func insert<T: Model>(_ query: Fluent.Query<T>) throws -> Document? {
-        guard let data = query.data else {
-            return nil
+    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> Document {
+        guard let data = query.data?.nodeObject else {
+            throw Error.unsupported("No data to insert")
         }
-
         var document: Document = [:]
-
+        
         for (key, val) in data {
-            document[key] = val?.bson ?? .null
+            document[key] = val.bson
         }
         
         return try database[query.entity].insert(document)
     }
 
-    private func select<T: Model>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
+    private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
         let cursor: Cursor<Document>
 
         if let q = query.mongoKittenQuery {
@@ -110,3 +116,4 @@ public class MongoDriver: Fluent.Driver {
         return cursor
     }
 }
+

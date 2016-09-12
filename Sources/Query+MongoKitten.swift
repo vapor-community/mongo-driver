@@ -2,12 +2,12 @@ import MongoKitten
 import Fluent
 
 extension Fluent.Query {
-    var mongoKittenQuery: AQTQuery? {
+    var mongoKittenQuery: MongoKitten.Query? {
         guard filters.count != 0 else {
             return nil
         }
 
-        var query: AQTQuery?
+        var query: MongoKitten.Query?
 
         for filter in filters {
             let subquery = filter.mongoKittenFilter
