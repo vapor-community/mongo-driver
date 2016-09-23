@@ -1,0 +1,9 @@
+machine:
+  services:
+    - mongodb
+test:
+  override:
+    - curl -sL swift.vapor.sh | ubuntu
+    - swift build
+    - swift build -c release
+    - swift test
