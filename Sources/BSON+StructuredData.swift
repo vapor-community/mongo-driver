@@ -26,6 +26,8 @@ extension BSON.Value {
                 dictOfNodes[key] = val.node
             }
             return .object(dictOfNodes)
+        case .binary(_, let data):
+            return .bytes(data)
         default:
             print("[FluentMongo] Could not convert BSON to Node: \(self)")
             return .null
