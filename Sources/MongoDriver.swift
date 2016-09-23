@@ -8,6 +8,8 @@ public class MongoDriver: Fluent.Driver {
         this driver can throw.
     */
     public enum Error: Swift.Error {
+        case noData
+        case noQuery
         case unsupported(String)
     }
     
@@ -21,8 +23,6 @@ public class MongoDriver: Fluent.Driver {
         let server = try Server("mongodb://\(user):\(password)@\(host):\(port)", automatically: true)
         self.database = server[database]
     }
-    
-    // MARK: All the Driver protocol implementations
 
     /**
         MongoDB uses `_id` as the main identifier.
@@ -33,8 +33,6 @@ public class MongoDriver: Fluent.Driver {
         Executes a query on the current MongoDB database.
     */
     public func query<T : Entity>(_ query: Fluent.Query<T>) throws -> Node {
-        print("Mongo executing: \(query)")
-        
         switch query.action {
         case .fetch:
             let cursor = try select(query)
@@ -54,8 +52,9 @@ public class MongoDriver: Fluent.Driver {
         case .delete:
             try delete(query)
             return Node.null
-        default:
-            throw Error.unsupported("Action \(query.action) is not yet supported.")
+        case .modify:
+            try modify(query)
+            return query.data ?? Node.null
         }
     }
     
@@ -93,7 +92,7 @@ public class MongoDriver: Fluent.Driver {
 
     private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> Document {
         guard let data = query.data?.nodeObject else {
-            throw Error.unsupported("No data to insert")
+            throw Error.noData
         }
         var document: Document = [:]
         
@@ -114,6 +113,24 @@ public class MongoDriver: Fluent.Driver {
         }
 
         return cursor
+    }
+
+    private func modify<T: Entity>(_ query: Fluent.Query<T>) throws {
+        guard let data = query.data?.nodeObject else {
+            throw Error.noData
+        }
+
+        guard let q = query.mongoKittenQuery else {
+            throw Error.noQuery
+        }
+
+        var document: Document = [:]
+
+        for (key, val) in data {
+            document[key] = val.bson
+        }
+
+        try database[query.entity].update(matching: q, to: document)
     }
 }
 

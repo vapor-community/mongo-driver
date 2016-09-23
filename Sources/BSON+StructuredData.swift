@@ -27,7 +27,7 @@ extension BSON.Value {
             }
             return .object(dictOfNodes)
         default:
-            print("Unsupported type BSON.Value -> SD: \(self)")
+            print("[FluentMongo] Could not convert BSON to Node: \(self)")
             return .null
         }
     }
