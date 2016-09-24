@@ -1,10 +1,3 @@
-//
-//  MongoDriver+Tests.swift
-//  FluentMongo
-//
-//  Created by Paul Rolfe on 9/10/16.
-//
-//
 import FluentMongo
 import Fluent
 
@@ -13,7 +6,7 @@ import XCTest
 extension MongoDriver {
     static func makeTestConnection() -> MongoDriver {
         do {
-            return try MongoDriver(database: "test", user: "test", password: "test", host: "localhost", port: 27017)
+            return try MongoDriver(database: "test", user: "test", password: "test", host: "127.0.0.1", port: 27017)
         } catch {
             print()
             print()

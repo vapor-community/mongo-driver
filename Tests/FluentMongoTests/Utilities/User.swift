@@ -12,6 +12,7 @@ final class User: Entity {
     var id: Fluent.Node?
     var name: String
     var email: String
+    var exists = false
     
     init(id: Node?, name: String, email: String) {
         self.id = id
@@ -19,12 +20,12 @@ final class User: Entity {
         self.email = email
     }
     
-    func makeNode() throws -> Node {
+    func makeNode(context: Context) throws -> Node {
         return try Node(node: [
-            "id": id,
+            "_id": id,
             "name": name,
             "email": email
-            ])
+        ])
     }
     
     init(node: Node, in context: Context) throws {

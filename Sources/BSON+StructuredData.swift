@@ -29,7 +29,7 @@ extension BSON.Value {
         case .binary(_, let data):
             return .bytes(data)
         default:
-            print("Unsupported type BSON.Value -> SD: \(self)")
+            print("[FluentMongo] Could not convert BSON to Node: \(self)")
             return .null
         }
     }

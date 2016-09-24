@@ -82,4 +82,35 @@ class DriverTests: XCTestCase {
             XCTFail("Could not find user: \(error)")
         }
     }
+
+    func testModify() throws {
+        User.database = database
+        do {
+            var user = User(id: nil, name: "Vapor", email: "mongo@vapor.codes")
+            try user.save()
+
+            guard let id = user.id else {
+                XCTFail("No user id")
+                return
+            }
+
+            guard var fetch = try User.find(id) else {
+                XCTFail("Could not fetch user")
+                return
+            }
+
+            XCTAssertEqual(fetch.name, user.name)
+
+            fetch.name = "Vapor2"
+            try fetch.save()
+
+            guard let verify = try User.find(id) else {
+                XCTFail("Could not fetch verify")
+                return
+            }
+            XCTAssertEqual(fetch.name, verify.name)
+        } catch {
+            XCTFail("Could not modify: \(error)")
+        }
+    }
 }
