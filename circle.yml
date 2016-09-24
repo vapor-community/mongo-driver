@@ -1,8 +1,6 @@
-machine:
-  services:
-    - mongo
 test:
   override:
+    - mongodb start
     - mongo --eval "db.createUser({user: 'test', pwd: 'test', roles: []})"
     - curl -sL swift.vapor.sh | ubuntu
     - swift build
