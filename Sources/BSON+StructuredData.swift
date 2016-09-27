@@ -28,6 +28,8 @@ extension BSON.Value {
             return .object(dictOfNodes)
         case .binary(_, let data):
             return .bytes(data)
+        case .boolean(let bool): 
+            return .bool(bool)
         default:
             print("[FluentMongo] Could not convert BSON to Node: \(self)")
             return .null
