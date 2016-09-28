@@ -9,14 +9,14 @@
 ### OS X
 
 ```shell
-brew install mongo
+brew install mongodb
 ```
 
-### Linux
+### Ubuntu
 
 ```shell
 sudo apt-get update
-sudo apt-get install mongo
+sudo apt-get install mongodb
 ```
 
 ## Run
