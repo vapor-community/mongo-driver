@@ -6,7 +6,11 @@ extension Fluent.Query {
         guard filters.count != 0 else {
             return nil
         }
-
+        
+        guard query.unions != 0 else {
+            fatalError("UNION CURRENTLY NOT SUPPORTED: SEE https://github.com/vapor/mongo-driver/issues/13")
+        }
+        
         var query: MongoKitten.Query?
 
         for filter in filters {
