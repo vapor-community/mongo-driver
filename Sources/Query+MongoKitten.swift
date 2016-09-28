@@ -7,7 +7,7 @@ extension Fluent.Query {
             return nil
         }
         
-        guard query.unions != 0 else {
+        guard query.unions.count != 0 else {
             fatalError("UNION CURRENTLY NOT SUPPORTED: SEE https://github.com/vapor/mongo-driver/issues/13")
         }
         
