@@ -43,6 +43,10 @@ class DriverTests: XCTestCase {
         } catch {
             XCTFail("Could not save: \(error)")
         }
+        
+        if user.id == .null {
+            XCTFail("Primary key was null")
+        }
         return user
     }
 
