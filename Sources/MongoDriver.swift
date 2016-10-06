@@ -97,6 +97,9 @@ public class MongoDriver: Fluent.Driver {
         var document: Document = [:]
         
         for (key, val) in data {
+            if key == idKey && val == .null {
+                continue
+            }
             document[key] = val.bson
         }
         
@@ -127,6 +130,9 @@ public class MongoDriver: Fluent.Driver {
         var document: Document = [:]
 
         for (key, val) in data {
+            if key == idKey {
+                continue
+            }
             document[key] = val.bson
         }
 
