@@ -83,10 +83,13 @@ public class MongoDriver: Fluent.Driver {
     }
 
     private func delete<T: Entity>(_ query: Fluent.Query<T>) throws {
-        if let q = query.mongoKittenQuery {
-            try database[query.entity].remove(matching: q)
-        } else {
+        if query.filters.isEmpty {
             try database[query.entity].drop()
+
+        } else {
+            let aqt = try query.makeAQT()
+            let mkq = MKQuery(aqt: aqt)
+            try database[query.entity].remove(matching: mkq)
         }
     }
 
@@ -109,11 +112,9 @@ public class MongoDriver: Fluent.Driver {
     private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
         let cursor: Cursor<Document>
 
-        if let q = query.mongoKittenQuery {
-            cursor = try database[query.entity].find(matching: q)
-        } else {
-            cursor = try database[query.entity].find()
-        }
+        let aqt = try query.makeAQT()
+        let mkq = MKQuery(aqt: aqt)
+        cursor = try database[query.entity].find(matching: mkq)
 
         return cursor
     }
@@ -123,9 +124,9 @@ public class MongoDriver: Fluent.Driver {
             throw Error.noData
         }
 
-        guard let q = query.mongoKittenQuery else {
-            throw Error.noQuery
-        }
+
+        let aqt = try query.makeAQT()
+        let mkq = MKQuery(aqt: aqt)
 
         var document: Document = [:]
 
@@ -136,7 +137,7 @@ public class MongoDriver: Fluent.Driver {
             document[key] = val.bson
         }
 
-        try database[query.entity].update(matching: q, to: document)
+        try database[query.entity].update(matching: mkq, to: document)
     }
 }
 
