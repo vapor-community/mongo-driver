@@ -8,7 +8,7 @@ extension Fluent.Query {
         }
         
         guard unions.count != 0 else {
-            fatalError("UNION CURRENTLY NOT SUPPORTED: SEE https://github.com/vapor/mongo-driver/issues/13")
+            print("[Mongo] Unions not yet supported.")
         }
         
         var query: MongoKitten.Query?
