@@ -7,8 +7,8 @@ extension Fluent.Query {
             return nil
         }
         
-        guard unions.count != 0 else {
-            print("[Mongo] Unions not yet supported.")
+        if unions.count != 0 {
+            fatalError("[Mongo] Unions not yet supported.")
         }
         
         var query: MongoKitten.Query?

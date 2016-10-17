@@ -52,7 +52,7 @@ extension Fluent.Filter {
                 query = MongoKitten.Query(aqt: .and(ands))
             }
         case .group:
-            print("[Mongo] Group filter method not yet supported.")
+            fatalError("[Mongo] Group filter method not yet supported.")
         }
 
         return query
