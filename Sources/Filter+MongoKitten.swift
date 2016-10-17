@@ -2,8 +2,8 @@ import MongoKitten
 import Fluent
 
 extension Fluent.Filter {
-    var mongoKittenFilter: MongoKitten.Query {
-        let query: MongoKitten.Query
+    public func makeAQT() throws -> MongoKitten.AQT {
+        let query: MongoKitten.AQT
 
         switch self.method {
         case .compare(let key, let comparison, let val):
@@ -11,26 +11,26 @@ extension Fluent.Filter {
             case .equals:
                 if let objId = try? ObjectId(val.bson.string), key == "_id" {
                     let value = Value.objectId(objId)
-                    query = MongoKitten.Query(aqt: .valEquals(key: key, val: value))
+                    query = .valEquals(key: key, val: value)
                 } else {
-                    query = MongoKitten.Query(aqt: .valEquals(key: key, val: val.bson))
+                    query = .valEquals(key: key, val: val.bson)
                 }
             case .greaterThan:
-                query = MongoKitten.Query(aqt: .greaterThan(key: key, val: val.bson))
+                query = .greaterThan(key: key, val: val.bson)
             case .lessThan:
-                query = MongoKitten.Query(aqt: .smallerThan(key: key, val: val.bson))
+                query = .smallerThan(key: key, val: val.bson)
             case .greaterThanOrEquals:
-                query = MongoKitten.Query(aqt: .greaterThanOrEqual(key: key, val: val.bson))
+                query = .greaterThanOrEqual(key: key, val: val.bson)
             case .lessThanOrEquals:
-                query = MongoKitten.Query(aqt: .smallerThanOrEqual(key: key, val: val.bson))
+                query = .smallerThanOrEqual(key: key, val: val.bson)
             case .notEquals:
-                query = MongoKitten.Query(aqt: .valNotEquals(key: key, val: val.bson))
+                query = .valNotEquals(key: key, val: val.bson)
             case .contains:
-                query = MongoKitten.Query(aqt: .contains(key: key, val: val.bson.string))
+                query = .contains(key: key, val: val.bson.string)
             case .hasPrefix:
-                query = MongoKitten.Query(aqt: .startsWith(key: key, val: val.bson.string))
+                query = .startsWith(key: key, val: val.bson.string)
             case .hasSuffix:
-                query = MongoKitten.Query(aqt: .endsWith(key: key, val: val.bson.string))
+                query = .endsWith(key: key, val: val.bson.string)
             }
         case .subset(let key, let scope, let values):
             switch scope {
@@ -41,7 +41,7 @@ extension Fluent.Filter {
                     ors.append(.valEquals(key: key, val: val.bson))
                 }
 
-                query = MongoKitten.Query(aqt: .or(ors))
+                query = .or(ors)
             case .notIn:
                 var ands: [AQT] = []
 
@@ -49,12 +49,19 @@ extension Fluent.Filter {
                     ands.append(.valNotEquals(key: key, val: val.bson))
                 }
 
-                query = MongoKitten.Query(aqt: .and(ands))
+                query = .and(ands)
             }
-        case .group:
-            fatalError("[Mongo] Group filter method not yet supported.")
-        }
+        case .group(let relation, let filters):
+            let aqts = try filters.map { try $0.makeAQT() }
 
+            switch relation {
+            case .and:
+                query = .and(aqts)
+            case .or:
+                query = .or(aqts)
+            }
+        }
+        
         return query
     }
 }
