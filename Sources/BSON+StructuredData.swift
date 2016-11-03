@@ -6,6 +6,8 @@ extension BSON.Value {
         switch self {
         case .double(let double):
             return .number(.double(double))
+        case .int32(let int):
+            return .number(.int(Int(int)))
         case .int64(let int):
             return .number(.int(Int(int)))
         case .string(let string):
