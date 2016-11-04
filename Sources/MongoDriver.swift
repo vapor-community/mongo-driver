@@ -1,3 +1,4 @@
+import Foundation
 import Fluent
 import MongoKitten
 
@@ -20,7 +21,13 @@ public class MongoDriver: Fluent.Driver {
         the given database name, credentials, and port.
     */
     public init(database: String, user: String, password: String, host: String, port: Int) throws {
-        let server = try Server("mongodb://\(user):\(password)@\(host):\(port)", automatically: true)
+        guard let escapedUser = user.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
+          throw Error.unsupported("Failed to percent encode username")
+        }
+        guard let escapedPassword = password.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
+          throw Error.unsupported("Failed to percent encode password")
+        }
+        let server = try Server("mongodb://\(escapedUser):\(escapedPassword)@\(host):\(port)", automatically: true)
         self.database = server[database]
     }
 
