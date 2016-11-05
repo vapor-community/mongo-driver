@@ -49,15 +49,6 @@ class DriverTests: XCTestCase {
         }
         return user
     }
-
-    func testConnectFailing() {
-        do {
-            let _ = try MongoDriver(database: "test", user: "test", password: "test", host: "localhost", port: 500)
-            XCTFail("Should not connect.")
-        } catch {
-            // This should fail.
-        }
-    }
     
     func testSaveClearFind() {
         // Test inserting a record then dropping the collection
