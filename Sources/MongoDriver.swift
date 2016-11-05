@@ -27,7 +27,7 @@ public class MongoDriver: Fluent.Driver {
         guard let escapedPassword = password.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
           throw Error.unsupported("Failed to percent encode password")
         }
-        let server = try Server("mongodb://\(escapedUser):\(escapedPassword)@\(host):\(port)", automatically: true)
+        let server = try Server(mongoURL: "mongodb://\(escapedUser):\(escapedPassword)@\(host):\(port)", automatically: true)
         self.database = server[database]
     }
 
@@ -113,7 +113,10 @@ public class MongoDriver: Fluent.Driver {
             document[key] = val.bson
         }
         
-        return try database[query.entity].insert(document)
+        let documentId = try database[query.entity].insert(document)
+        document[idKey] = documentId
+        
+        return document
     }
 
     private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
