@@ -15,8 +15,7 @@ import Fluent
 class DriverTests: XCTestCase {
     static var allTests : [(String, (DriverTests) -> () throws -> Void)] {
         return [
-            ("testConnectFailing", testConnectFailing),
-            ("testSaveClearFind", testSaveClearFind),
+            ("testSaveClearFind", testSaveClearFind)
         ]
     }
     
