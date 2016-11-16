@@ -33,7 +33,7 @@ extension BSON.Value {
         case .boolean(let bool): 
             return .bool(bool)
         default:
-            print("[FluentMongo] Could not convert BSON to Node: \(self)")
+            print("[FluentMongo] Could not convert BSON to Node.")
             return .null
         }
     }
