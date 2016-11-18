@@ -15,8 +15,7 @@ import Fluent
 class DriverTests: XCTestCase {
     static var allTests : [(String, (DriverTests) -> () throws -> Void)] {
         return [
-            ("testConnectFailing", testConnectFailing),
-            ("testSaveClearFind", testSaveClearFind),
+            ("testSaveClearFind", testSaveClearFind)
         ]
     }
     
@@ -48,15 +47,6 @@ class DriverTests: XCTestCase {
             XCTFail("Primary key was null")
         }
         return user
-    }
-
-    func testConnectFailing() {
-        do {
-            let _ = try MongoDriver(database: "test", user: "test", password: "test", host: "localhost", port: 500)
-            XCTFail("Should not connect.")
-        } catch {
-            // This should fail.
-        }
     }
     
     func testSaveClearFind() {
