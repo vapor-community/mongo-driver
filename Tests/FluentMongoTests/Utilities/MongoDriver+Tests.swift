@@ -6,7 +6,7 @@ import XCTest
 extension MongoDriver {
     static func makeTestConnection() -> MongoDriver {
         do {
-            return try MongoDriver(database: "test", user: "test", password: "test", host: "127.0.0.1", port: 27017)
+            return try MongoDriver(connectionString: "mongodb://test:test@127.0.0.1:27017/test")
         } catch {
             print()
             print()

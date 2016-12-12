@@ -2,35 +2,34 @@ import MongoKitten
 import Fluent
 
 extension Fluent.Filter {
-    public func makeAQT() throws -> MongoKitten.AQT {
-        let query: MongoKitten.AQT
+    public func makeMKQuery() -> MongoKitten.Query {
+        let query: MongoKitten.Query
 
         switch self.method {
         case .compare(let key, let comparison, let val):
             switch comparison {
             case .equals:
-                if let objId = try? ObjectId(val.bson.string), key == "_id" {
-                    let value = Value.objectId(objId)
-                    query = .valEquals(key: key, val: value)
+                if key == "_id", let id = try? ObjectId(val.string ?? "") {
+                    query = "_id" == id
                 } else {
-                    query = .valEquals(key: key, val: val.bson)
+                    query = key == val
                 }
             case .greaterThan:
-                query = .greaterThan(key: key, val: val.bson)
+                query = key > val
             case .lessThan:
-                query = .smallerThan(key: key, val: val.bson)
+                query = key < val
             case .greaterThanOrEquals:
-                query = .greaterThanOrEqual(key: key, val: val.bson)
+                query = key >= val
             case .lessThanOrEquals:
-                query = .smallerThanOrEqual(key: key, val: val.bson)
+                query = key <= val
             case .notEquals:
-                query = .valNotEquals(key: key, val: val.bson)
+                query = key != val
             case .contains:
-                query = .contains(key: key, val: val.bson.string)
+                query = MKQuery(aqt: .contains(key: key, val: val.string ?? "", options: []))
             case .hasPrefix:
-                query = .startsWith(key: key, val: val.bson.string)
+                query = MKQuery(aqt: .startsWith(key: key, val: val.string ?? ""))
             case .hasSuffix:
-                query = .endsWith(key: key, val: val.bson.string)
+                query = MKQuery(aqt: .endsWith(key: key, val: val.string ?? ""))
             }
         case .subset(let key, let scope, let values):
             switch scope {
@@ -38,28 +37,29 @@ extension Fluent.Filter {
                 var ors: [AQT] = []
 
                 for val in values {
-                    ors.append(.valEquals(key: key, val: val.bson))
+                    ors.append(.valEquals(key: key, val: val))
                 }
 
-                query = .or(ors)
+                query = MKQuery(aqt: .or(ors))
             case .notIn:
                 var ands: [AQT] = []
 
                 for val in values {
-                    ands.append(.valNotEquals(key: key, val: val.bson))
+                    ands.append(.valNotEquals(key: key, val: val))
                 }
 
-                query = .and(ands)
+                query = MKQuery(aqt: .and(ands))
             }
         case .group(let relation, let filters):
-            let aqts = try filters.map { try $0.makeAQT() }
-
-            switch relation {
-            case .and:
-                query = .and(aqts)
-            case .or:
-                query = .or(aqts)
-            }
+            fatalError()
+//            let aqts = try filters.reduce(Query([:]), &&)
+//
+//            switch relation {
+//            case .and:
+//                query = MKQuery(aqt: .and(aqts))
+//            case .or:
+//                query = MKQuery(aqt: .or(aqts))
+//            }
         }
         
         return query
