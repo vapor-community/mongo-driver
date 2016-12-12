@@ -20,15 +20,8 @@ public class MongoDriver: Fluent.Driver {
         Creates a new `MongoDriver` with
         the given database name, credentials, and port.
     */
-    public init(database: String, user: String, password: String, host: String, port: Int) throws {
-        guard let escapedUser = user.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
-          throw Error.unsupported("Failed to percent encode username")
-        }
-        guard let escapedPassword = password.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
-          throw Error.unsupported("Failed to percent encode password")
-        }
-        let server = try Server("mongodb://\(escapedUser):\(escapedPassword)@\(host):\(port)", automatically: true)
-        self.database = server[database]
+    public init(connectionString: String) throws {
+        self.database = try Database(mongoURL: connectionString)
     }
 
     /**
@@ -50,12 +43,7 @@ public class MongoDriver: Fluent.Driver {
             }
             return try items.makeNode()
         case .create:
-            let document = try insert(query)
-            if let documentId = getId(document: document) {
-                return documentId
-            } else {
-                throw MongoError.insertFailure(documents: [document], error: nil)
-            }
+            return try insert(query).node
         case .delete:
             try delete(query)
             return Node.null
@@ -82,7 +70,7 @@ public class MongoDriver: Fluent.Driver {
     // MARK: Private
     
     private func convert(document: Document) -> Node {
-        return document.makeBsonValue().node
+        return document.node
     }
 
     private func getId(document: Document) -> Node? {
@@ -94,13 +82,11 @@ public class MongoDriver: Fluent.Driver {
             try database[query.entity].drop()
 
         } else {
-            let aqt = try query.makeAQT()
-            let mkq = MKQuery(aqt: aqt)
-            try database[query.entity].remove(matching: mkq)
+            try database[query.entity].remove(matching: query.makeMKQuery())
         }
     }
 
-    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> Document {
+    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> ValueConvertible {
         guard let data = query.data?.nodeObject else {
             throw Error.noData
         }
@@ -110,7 +96,7 @@ public class MongoDriver: Fluent.Driver {
             if key == idKey && val == .null {
                 continue
             }
-            document[key] = val.bson
+            document[raw: key] = val
         }
         
         return try database[query.entity].insert(document)
@@ -119,9 +105,7 @@ public class MongoDriver: Fluent.Driver {
     private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
         let cursor: Cursor<Document>
 
-        let aqt = try query.makeAQT()
-        let mkq = MKQuery(aqt: aqt)
-        cursor = try database[query.entity].find(matching: mkq)
+        cursor = try database[query.entity].find(matching: query.makeMKQuery())
 
         return cursor
     }
@@ -130,21 +114,17 @@ public class MongoDriver: Fluent.Driver {
         guard let data = query.data?.nodeObject else {
             throw Error.noData
         }
-
-
-        let aqt = try query.makeAQT()
-        let mkq = MKQuery(aqt: aqt)
-
+        
         var document: Document = [:]
 
         for (key, val) in data {
             if key == idKey {
                 continue
             }
-            document[key] = val.bson
+            document[raw: key] = val
         }
 
-        try database[query.entity].update(matching: mkq, to: document)
+        try database[query.entity].update(matching: query.makeMKQuery(), to: document)
     }
 }
 
