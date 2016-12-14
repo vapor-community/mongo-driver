@@ -17,6 +17,7 @@ class DriverTests: XCTestCase {
         return [
             ("testConnectFailing", testConnectFailing),
             ("testSaveClearFind", testSaveClearFind),
+            ("testModify", testModify)
         ]
     }
     
