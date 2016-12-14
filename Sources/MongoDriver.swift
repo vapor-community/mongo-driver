@@ -129,13 +129,23 @@ public class MongoDriver: Fluent.Driver {
 
         let aqt = try query.makeAQT()
         let mkq = MKQuery(aqt: aqt)
+        let sortDocument: Document?
+        
+        if !query.sorts.isEmpty {
+            let elements = query.sorts.map { ($0.field, $0.direction == .ascending ? Value.int32(1) : Value.int32(-1)) }
+            sortDocument = Document(dictionaryElements: elements)
+        } else {
+            sortDocument = nil
+        }
         
         if let limit = query.limit {
             cursor = try database[query.entity].find(matching: mkq,
+                                                     sortedBy: sortDocument,
                                                      skipping: Int32(limit.offset),
                                                      limitedTo: Int32(limit.count))
         } else {
-            cursor = try database[query.entity].find(matching: mkq)
+            cursor = try database[query.entity].find(matching: mkq,
+                                                     sortedBy: sortDocument)
         }
 
         return cursor
