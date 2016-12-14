@@ -17,7 +17,13 @@ class DriverTests: XCTestCase {
         return [
             ("testConnectFailing", testConnectFailing),
             ("testSaveClearFind", testSaveClearFind),
-            ("testModify", testModify)
+            ("testModify", testModify),
+            ("testSelectLimit", testSelectLimit),
+            ("testDeleteAll", testDeleteAll),
+            ("testDeleteLimit0Implicit", testDeleteLimit0Implicit),
+            ("testDeleteLimit0Explicit", testDeleteLimit0Explicit),
+            ("testDeleteLimit1", testDeleteLimit1),
+            ("testDeleteLimitInvalid", testDeleteLimitInvalid)
         ]
     }
     
@@ -34,8 +40,8 @@ class DriverTests: XCTestCase {
         let _ = try? database.delete(User.entity)
     }
     
-    func createUser() -> User {
-        var user = User(id: nil, name: "Vapor", email: "vapor@qutheory.io")
+    func createUser(suffix: String = "") -> User {
+        var user = User(id: nil, name: "Vapor\(suffix)", email: "vapor@qutheory.io")
         User.database = database
         
         do {
@@ -116,6 +122,103 @@ class DriverTests: XCTestCase {
             XCTAssertEqual(fetch.name, verify.name)
         } catch {
             XCTFail("Could not modify: \(error)")
+        }
+    }
+    
+    func testSelectLimit() throws {
+        // Insert dummy users Vapor0, Vapor1, ..., Vapor9
+        for i in (0..<10) {
+            _ = createUser(suffix: "\(i)")
+        }
+        
+        let query = try User.query()
+        query.limit = Limit(count: 3, offset: 2)
+        // query.sorts = [Sort(User.self, "name", .ascending)]
+        let result = try query.all()
+        XCTAssertEqual(["Vapor2", "Vapor3", "Vapor4"], result.map { $0.name })
+    }
+
+    func testSelectSortLimit() throws {
+        // Insert dummy users Vapor9, Vapor8, ..., Vapor0
+        for i in (0..<10).reversed() {
+            _ = createUser(suffix: "\(i)")
+        }
+        
+        let query = try User.query()
+        query.limit = Limit(count: 3, offset: 2)
+        query.sorts = [Sort(User.self, "name", .ascending)]
+        let result = try query.all()
+        XCTAssertEqual(["Vapor2", "Vapor3", "Vapor4"], result.map { $0.name })
+    }
+
+    func testDeleteAll() throws {
+        // Insert dummy users Vapor0, Vapor1, ..., Vapor9
+        for i in (0..<10) {
+            _ = createUser(suffix: "\(i)")
+        }
+
+        let query = try User.query()
+        try query.delete()
+        
+        let remaining = try query.all()
+        XCTAssertTrue(remaining.isEmpty)
+    }
+    
+    func testDeleteLimit0Implicit() throws {
+        // Insert dummy users Vapor0, Vapor1, Vapor0, ..., Vapor1
+        for i in (0..<10) {
+            _ = createUser(suffix: "\(i%2)")
+        }
+        
+        let query = try User.query()
+        try query.filter("name", "Vapor0")
+        
+        try query.delete()
+        
+        let remaining = try User.query().all()
+        XCTAssertEqual(5, remaining.count)
+        XCTAssertEqual(Array(repeating: "Vapor1", count: 5), remaining.map { $0.name })
+    }
+
+    func testDeleteLimit0Explicit() throws {
+        // Insert dummy users Vapor0, Vapor1, Vapor0, ..., Vapor1
+        for i in (0..<10) {
+            _ = createUser(suffix: "\(i%2)")
+        }
+        
+        let query = try User.query()
+        try query.filter("name", "Vapor0")
+        query.limit = Limit(count: 0)
+        try query.delete()
+        
+        let remaining = try User.query().all()
+        XCTAssertEqual(5, remaining.count)
+        XCTAssertEqual(Array(repeating: "Vapor1", count: 5), remaining.map { $0.name })
+    }
+
+    func testDeleteLimit1() throws {
+        // Insert dummy users Vapor0, Vapor1, Vapor0, ..., Vapor1
+        for i in (0..<10) {
+            _ = createUser(suffix: "\(i%2)")
+        }
+        
+        let query = try User.query()
+        try query.filter("name", "Vapor0")
+        query.limit = Limit(count: 1)
+        try query.delete()
+        
+        let remaining = try User.query().all()
+        XCTAssertEqual(9, remaining.count)
+    }
+
+    func testDeleteLimitInvalid() throws {
+        do {
+            let query = try User.query()
+            query.limit = Limit(count: 5)
+            try query.delete()
+            XCTFail("Limit greater than 1 should fail")
+        } catch {
+            // this should fail
         }
     }
 }
