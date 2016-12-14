@@ -9,7 +9,7 @@ import Fluent
  
     - user: test
     - password: test
-    - localhost: test
+    - host: localhost
     - port: 27017
 */
 class DriverTests: XCTestCase {
