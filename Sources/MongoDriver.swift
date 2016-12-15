@@ -90,13 +90,21 @@ public class MongoDriver: Fluent.Driver {
     }
 
     private func delete<T: Entity>(_ query: Fluent.Query<T>) throws {
-        if query.filters.isEmpty {
+        switch (query.filters.count, query.limit?.count ?? 0) {
+        case (0, 0):
             try database[query.entity].drop()
-
-        } else {
+        case (_, 0):
+            // Limit 0: delete all matching documents
             let aqt = try query.makeAQT()
             let mkq = MKQuery(aqt: aqt)
             try database[query.entity].remove(matching: mkq)
+        case (_, 1):
+            // Limit 1: delete first matching document
+            let aqt = try query.makeAQT()
+            let mkq = MKQuery(aqt: aqt)
+            try database[query.entity].remove(matching: mkq, limitedTo: 1, stoppingOnError: true)
+        case (_, _):
+            throw Error.unsupported("Mongo only supports limit 0 (all documents) or limit 1 (single document) for deletes")
         }
     }
 
@@ -121,7 +129,24 @@ public class MongoDriver: Fluent.Driver {
 
         let aqt = try query.makeAQT()
         let mkq = MKQuery(aqt: aqt)
-        cursor = try database[query.entity].find(matching: mkq)
+        let sortDocument: Document?
+        
+        if !query.sorts.isEmpty {
+            let elements = query.sorts.map { ($0.field, $0.direction == .ascending ? Value.int32(1) : Value.int32(-1)) }
+            sortDocument = Document(dictionaryElements: elements)
+        } else {
+            sortDocument = nil
+        }
+        
+        if let limit = query.limit {
+            cursor = try database[query.entity].find(matching: mkq,
+                                                     sortedBy: sortDocument,
+                                                     skipping: Int32(limit.offset),
+                                                     limitedTo: Int32(limit.count))
+        } else {
+            cursor = try database[query.entity].find(matching: mkq,
+                                                     sortedBy: sortDocument)
+        }
 
         return cursor
     }
