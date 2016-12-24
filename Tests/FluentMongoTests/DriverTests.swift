@@ -59,7 +59,7 @@ class DriverTests: XCTestCase {
 
     func testConnectFailing() {
         do {
-            let _ = try MongoDriver(database: "test", user: "test", password: "test", host: "localhost", port: 500)
+            let _ = try MongoDriver(connectionString: "mongodb://test:test@localhost:500/test")
             XCTFail("Should not connect.")
         } catch {
             // This should fail.

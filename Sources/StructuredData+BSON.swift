@@ -2,38 +2,36 @@ import MongoKitten
 import Fluent
 import Node
 
-extension Node {
-    var bson: BSON.Value {
+extension Node: ValueConvertible {
+    public func makeBSONPrimitive() -> BSONPrimitive {
         switch self {
         case .number(let num):
             switch num {
             case .int(let int):
-                return .int64(Int64(int))
-            case .double(let dbl):
-                return .double(dbl)
+                return Int64(int)
+            case .double(let double):
+                return double
             case .uint(let uint):
-                return .int64(Int64(uint))
+                return Int64(uint)
             }
         case .array(let array):
-            let bsonArray = array.map { item in
-                return item.bson
-            }
-            let document = Document(array: bsonArray)
-            return .array(document)
+            return Document(array: array)
         case .bool(let bool):
-            return .boolean(bool)
+            return bool
         case .object(let dict):
-            var bsonDict: Document = [:]
-            dict.forEach { key, val in
-                bsonDict[key] = val.bson
+            var document: Document = [:]
+
+            for (key, value) in dict {
+                document[raw: key] = value
             }
-            return .document(bsonDict)
+            
+            return document
         case .null:
-            return .null
+            return Null()
         case .string(let string):
-            return .string(string)
-        case .bytes(let byteArray):
-            return .binary(subtype: .generic, data: byteArray)
+            return string
+        case .bytes(let data):
+            return Binary(data: data, withSubtype: .generic)
         }
     }
 }
