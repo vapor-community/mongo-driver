@@ -14,7 +14,7 @@ public class MongoDriver: Fluent.Driver {
         case unsupported(String)
     }
     
-    let database: MongoKitten.Database
+    public let database: MongoKitten.Database
     
     /**
         Creates a new `MongoDriver` with
@@ -78,11 +78,17 @@ public class MongoDriver: Fluent.Driver {
     }
 
     private func delete<T: Entity>(_ query: Fluent.Query<T>) throws {
-        if query.filters.isEmpty {
+        switch (query.filters.count, query.limit?.count ?? 0) {
+        case (0, 0):
             try database[query.entity].drop()
-
-        } else {
+        case (_, 0):
+            // Limit 0: delete all matching documents
             try database[query.entity].remove(matching: query.makeMKQuery())
+        case (_, 1):
+            // Limit 1: delete first matching document
+            try database[query.entity].remove(matching: query.makeMKQuery(), limitedTo: 1, stoppingOnError: true)
+        case (_, _):
+            throw Error.unsupported("Mongo only supports limit 0 (all documents) or limit 1 (single document) for deletes")
         }
     }
 
@@ -105,8 +111,28 @@ public class MongoDriver: Fluent.Driver {
     private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
         let cursor: Cursor<Document>
 
-        cursor = try database[query.entity].find(matching: query.makeMKQuery())
-
+        let mkq = try query.makeMKQuery()
+        let sortDocument: MongoKitten.Sort?
+        
+        if !query.sorts.isEmpty {
+            let elements = query.sorts.map { sort -> (String, ValueConvertible?) in
+                (sort.field, sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending)
+            }
+            sortDocument = MongoKitten.Sort(Document(dictionaryElements: elements))
+        } else {
+            sortDocument = nil
+        }
+        
+        if let limit = query.limit {
+            cursor = try database[query.entity].find(matching: mkq,
+                                                     sortedBy: sortDocument,
+                                                     skipping: Int32(limit.offset),
+                                                     limitedTo: Int32(limit.count))
+        } else {
+            cursor = try database[query.entity].find(matching: mkq,
+                                                     sortedBy: sortDocument)
+        }
+        
         return cursor
     }
 
