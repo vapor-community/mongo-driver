@@ -40,7 +40,7 @@ import Fluent
 //    }
 //}
 
-extension ValueConvertible {
+public extension ValueConvertible {
     var node: Node {
         let value = self.makeBSONPrimitive()
         
