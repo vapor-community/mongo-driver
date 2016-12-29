@@ -49,7 +49,11 @@ public class MongoDriver: Fluent.Driver {
             return Node.null
         case .modify:
             try modify(query)
-            return query.data ?? Node.null
+            if let data = query.data {
+                return [data]
+            } else {
+                return Node.null
+            }
         }
     }
     
