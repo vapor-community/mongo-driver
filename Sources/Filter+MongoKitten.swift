@@ -51,15 +51,14 @@ extension Fluent.Filter {
                 query = MKQuery(aqt: .and(ands))
             }
         case .group(let relation, let filters):
-            fatalError()
-//            let aqts = try filters.reduce(Query([:]), &&)
-//
-//            switch relation {
-//            case .and:
-//                query = MKQuery(aqt: .and(aqts))
-//            case .or:
-//                query = MKQuery(aqt: .or(aqts))
-//            }
+            query = filters.map {
+                $0.makeMKQuery()
+                }.reduce(Query([:]), { lhs, rhs in
+                    switch relation {
+                    case .and: return lhs && rhs
+                    case .or: return lhs || rhs
+                    }
+                })
         }
         
         return query

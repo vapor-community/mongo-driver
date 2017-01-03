@@ -54,6 +54,8 @@ public class MongoDriver: Fluent.Driver {
             } else {
                 return Node.null
             }
+        case .count:
+            return try count(query).node
         }
     }
     
@@ -112,6 +114,22 @@ public class MongoDriver: Fluent.Driver {
         return try database[query.entity].insert(document)
     }
 
+    private func count<T: Entity>(_ query: Fluent.Query<T>) throws -> Int {
+        let count: Int
+        
+        let mkq = try query.makeMKQuery()
+        
+        if let limit = query.limit {
+            count = try database[query.entity].count(matching: mkq,
+                                                     limitedTo: Int32(limit.count),
+                                                     skipping: Int32(limit.offset))
+        } else {
+            count = try database[query.entity].count(matching: mkq)
+        }
+        
+        return count
+    }
+    
     private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
         let cursor: Cursor<Document>
 
