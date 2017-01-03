@@ -2,7 +2,7 @@ import MongoKitten
 import Fluent
 
 extension Fluent.Filter {
-    public func makeMKQuery() -> MongoKitten.Query {
+    public func makeMKQuery() throws -> MongoKitten.Query {
         let query: MongoKitten.Query
 
         switch self.method {
@@ -51,14 +51,17 @@ extension Fluent.Filter {
                 query = MKQuery(aqt: .and(ands))
             }
         case .group(let relation, let filters):
-            query = filters.map {
-                $0.makeMKQuery()
-                }.reduce(Query([:]), { lhs, rhs in
-                    switch relation {
-                    case .and: return lhs && rhs
-                    case .or: return lhs || rhs
-                    }
-                })
+            if filters.count >= 2 {
+                let queries = try filters.map {
+                    try $0.makeMKQuery()
+                }
+                switch relation {
+                case .and: return queries.dropFirst().reduce(queries[0], &&)
+                case .or: return queries.dropFirst().reduce(queries[0], ||)
+                }
+            } else {
+                fatalError("Filter group must have at least 2 filters")
+            }
         }
         
         return query

@@ -6,13 +6,15 @@ extension Fluent.Query {
         if unions.count != 0 {
             fatalError("[Mongo] Unions not yet supported. Use nesting instead.")
         }
-
-        let query = filters.map {
-            $0.makeMKQuery()
-        }.reduce(Query([:]), { lhs, rhs in
-            return lhs && rhs
-        })
-
-        return query
+        
+        switch filters.count {
+        case 0: return Query([:])
+        case 1: return try filters[0].makeMKQuery()
+        default:
+            let queries = try filters.map {
+                try $0.makeMKQuery()
+            }
+            return queries.dropFirst().reduce(queries[0], &&)
+        }
     }
 }

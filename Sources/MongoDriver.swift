@@ -55,7 +55,7 @@ public class MongoDriver: Fluent.Driver {
                 return Node.null
             }
         case .count:
-            return try count(query).node
+            return try count(query).makeNode()
         }
     }
     
