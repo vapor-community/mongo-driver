@@ -56,6 +56,8 @@ public class MongoDriver: Fluent.Driver {
             }
         case .count:
             return try count(query).makeNode()
+        default:
+            throw Error.unsupported("Action: \(query.action) is not supported.")
         }
     }
     
