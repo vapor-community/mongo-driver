@@ -49,6 +49,8 @@ public class MongoDriver: Fluent.Driver {
                 items.append(i)
             }
             return try items.makeNode()
+        case .count:
+            return try count(query).makeNode()
         case .create:
             let document = try insert(query)
             if let documentId = getId(document: document) {
@@ -151,6 +153,13 @@ public class MongoDriver: Fluent.Driver {
         }
 
         return cursor
+    }
+    
+    private func count<T: Entity>(_ query: Fluent.Query<T>) throws -> Int {
+        if let q = query.mongoKittenQuery {
+            return try database[query.entity].count(matching: q)
+        }
+        return try database[query.entity].count()
     }
 
     private func modify<T: Entity>(_ query: Fluent.Query<T>) throws {
