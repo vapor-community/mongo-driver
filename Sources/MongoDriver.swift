@@ -139,7 +139,7 @@ public class MongoDriver: Fluent.Driver {
         let sortDocument: MongoKitten.Sort?
         
         if !query.sorts.isEmpty {
-            let elements = query.sorts.map { sort -> (String, ValueConvertible?) in
+            let elements = query.sorts.map { sort -> (StringVariant, ValueConvertible?) in
                 (sort.field, sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending)
             }
             sortDocument = MongoKitten.Sort(Document(dictionaryElements: elements))
