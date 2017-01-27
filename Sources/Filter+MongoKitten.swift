@@ -23,7 +23,11 @@ extension Fluent.Filter {
             case .lessThanOrEquals:
                 query = key <= val
             case .notEquals:
-                query = key != val
+                if key == "_id", let id = try? ObjectId(val.string ?? "") {
+                    query = "_id" != id
+                } else {
+                    query = key != val
+                }
             case .contains:
                 query = MKQuery(aqt: .contains(key: key, val: val.string ?? "", options: []))
             case .hasPrefix:
