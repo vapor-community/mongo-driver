@@ -23,7 +23,10 @@ class DriverTests: XCTestCase {
             ("testDeleteLimit0Implicit", testDeleteLimit0Implicit),
             ("testDeleteLimit0Explicit", testDeleteLimit0Explicit),
             ("testDeleteLimit1", testDeleteLimit1),
-            ("testDeleteLimitInvalid", testDeleteLimitInvalid)
+            ("testDeleteLimitInvalid", testDeleteLimitInvalid),
+            ("testCount", testCount),
+            ("testGroupOr", testGroupOr),
+            ("testGroupAnd", testGroupAnd),
         ]
     }
     
@@ -59,7 +62,7 @@ class DriverTests: XCTestCase {
 
     func testConnectFailing() {
         do {
-            let _ = try MongoDriver(database: "test", user: "test", password: "test", host: "localhost", port: 500)
+            let _ = try MongoDriver(connectionString: "mongodb://test:test@localhost:500/test")
             XCTFail("Should not connect.")
         } catch {
             // This should fail.
@@ -220,5 +223,61 @@ class DriverTests: XCTestCase {
         } catch {
             // this should fail
         }
+    }
+    
+    func testCount() throws {
+        // Insert dummy users Vapor0, Vapor1, Vapor0, ..., Vapor1
+        for i in (0..<10) {
+            _ = createUser(suffix: "\(i%2)")
+        }
+        let count = try User.query().count()
+        XCTAssertEqual(10, count)
+    }
+    
+    func testGroupOr() throws {
+        // Insert dummy users Vapor0, Vapor1, ...
+        for i in (0..<10) {
+            _ = createUser(suffix: "\(i)")
+        }
+        
+        let query = try User.query().or({ query in
+            try query.filter("name", "Vapor3")
+            try query.filter("name", "Vapor4")
+            try query.filter("name", "Vapor5")
+            try query.filter("name", "Vapor6")
+            try query.filter("name", "Vapor7")
+        })
+        query.limit = Limit(count: 3, offset: 1)
+        let result = try query.all()
+        XCTAssertEqual(["Vapor4", "Vapor5", "Vapor6"], result.map { $0.name })
+    }
+    
+    func testGroupAnd() throws {
+        // Insert dummy users Vapor0, Vapor1, ...
+        for i in (0..<10) {
+            var user = createUser(suffix: "\(i)")
+            if i%2 == 0 {
+                user.email = "test@test.com"
+                try user.save()
+            }
+        }
+        
+        let query = try User.query()
+            .or{ query in
+                try query.filter("name", "Vapor1")
+                try query.and{ query in
+                    try query.filter("name", "Vapor2")
+                    try query.filter("email", "test@test.com")
+                }
+                try query.and{ query in
+                    try query.filter("name", "Vapor3")
+                    try query.filter("email", "test@test.com")
+                }
+                try query.filter("name", "Vapor4")
+                try query.filter("name", "Vapor5")
+            }
+        query.limit = Limit(count: 2, offset: 1)
+        let result = try query.all()
+        XCTAssertEqual(["Vapor2", "Vapor4"], result.map { $0.name })
     }
 }
