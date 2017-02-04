@@ -14,21 +14,14 @@ public class MongoDriver: Fluent.Driver {
         case unsupported(String)
     }
     
-    let database: MongoKitten.Database
+    public let database: MongoKitten.Database
     
     /**
         Creates a new `MongoDriver` with
         the given database name, credentials, and port.
     */
-    public init(database: String, user: String, password: String, host: String, port: Int) throws {
-        guard let escapedUser = user.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
-          throw Error.unsupported("Failed to percent encode username")
-        }
-        guard let escapedPassword = password.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
-          throw Error.unsupported("Failed to percent encode password")
-        }
-        let server = try Server("mongodb://\(escapedUser):\(escapedPassword)@\(host):\(port)", automatically: true)
-        self.database = server[database]
+    public init(connectionString: String) throws {
+        self.database = try Database(mongoURL: connectionString)
     }
 
     /**
@@ -50,18 +43,19 @@ public class MongoDriver: Fluent.Driver {
             }
             return try items.makeNode()
         case .create:
-            let document = try insert(query)
-            if let documentId = getId(document: document) {
-                return documentId
-            } else {
-                throw MongoError.insertFailure(documents: [document], error: nil)
-            }
+            return try insert(query).node
         case .delete:
             try delete(query)
             return Node.null
         case .modify:
             try modify(query)
-            return query.data ?? Node.null
+            if let data = query.data {
+                return [data]
+            } else {
+                return Node.null
+            }
+        case .count:
+            return try count(query).makeNode()
         default:
             throw Error.unsupported("Action: \(query.action) is not supported.")
         }
@@ -84,7 +78,7 @@ public class MongoDriver: Fluent.Driver {
     // MARK: Private
     
     private func convert(document: Document) -> Node {
-        return document.makeBsonValue().node
+        return document.node
     }
 
     private func getId(document: Document) -> Node? {
@@ -97,20 +91,16 @@ public class MongoDriver: Fluent.Driver {
             try database[query.entity].drop()
         case (_, 0):
             // Limit 0: delete all matching documents
-            let aqt = try query.makeAQT()
-            let mkq = MKQuery(aqt: aqt)
-            try database[query.entity].remove(matching: mkq)
+            try database[query.entity].remove(matching: query.makeMKQuery())
         case (_, 1):
             // Limit 1: delete first matching document
-            let aqt = try query.makeAQT()
-            let mkq = MKQuery(aqt: aqt)
-            try database[query.entity].remove(matching: mkq, limitedTo: 1, stoppingOnError: true)
+            try database[query.entity].remove(matching: query.makeMKQuery(), limitedTo: 1, stoppingOnError: true)
         case (_, _):
             throw Error.unsupported("Mongo only supports limit 0 (all documents) or limit 1 (single document) for deletes")
         }
     }
 
-    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> Document {
+    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> ValueConvertible {
         guard let data = query.data?.nodeObject else {
             throw Error.noData
         }
@@ -120,22 +110,39 @@ public class MongoDriver: Fluent.Driver {
             if key == idKey && val == .null {
                 continue
             }
-            document[key] = val.bson
+            document[raw: key] = val
         }
         
         return try database[query.entity].insert(document)
     }
 
+    private func count<T: Entity>(_ query: Fluent.Query<T>) throws -> Int {
+        let count: Int
+        
+        let mkq = try query.makeMKQuery()
+        
+        if let limit = query.limit {
+            count = try database[query.entity].count(matching: mkq,
+                                                     limitedTo: Int32(limit.count),
+                                                     skipping: Int32(limit.offset))
+        } else {
+            count = try database[query.entity].count(matching: mkq)
+        }
+        
+        return count
+    }
+    
     private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
         let cursor: Cursor<Document>
 
-        let aqt = try query.makeAQT()
-        let mkq = MKQuery(aqt: aqt)
-        let sortDocument: Document?
+        let mkq = try query.makeMKQuery()
+        let sortDocument: MongoKitten.Sort?
         
         if !query.sorts.isEmpty {
-            let elements = query.sorts.map { ($0.field, $0.direction == .ascending ? Value.int32(1) : Value.int32(-1)) }
-            sortDocument = Document(dictionaryElements: elements)
+            let elements = query.sorts.map { sort -> (StringVariant, ValueConvertible?) in
+                (sort.field, sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending)
+            }
+            sortDocument = MongoKitten.Sort(Document(dictionaryElements: elements))
         } else {
             sortDocument = nil
         }
@@ -149,7 +156,7 @@ public class MongoDriver: Fluent.Driver {
             cursor = try database[query.entity].find(matching: mkq,
                                                      sortedBy: sortDocument)
         }
-
+        
         return cursor
     }
 
@@ -157,21 +164,17 @@ public class MongoDriver: Fluent.Driver {
         guard let data = query.data?.nodeObject else {
             throw Error.noData
         }
-
-
-        let aqt = try query.makeAQT()
-        let mkq = MKQuery(aqt: aqt)
-
+        
         var document: Document = [:]
 
         for (key, val) in data {
             if key == idKey {
                 continue
             }
-            document[key] = val.bson
+            document[raw: key] = val
         }
 
-        try database[query.entity].update(matching: mkq, to: document)
+        try database[query.entity].update(matching: query.makeMKQuery(), to: document)
     }
 }
 
