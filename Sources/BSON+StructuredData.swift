@@ -1,36 +1,36 @@
 import MongoKitten
 import Fluent
 
-extension BSON.Value {
+extension Primitive {
     var node: Node {
         switch self {
-        case .double(let double):
-            return .number(.double(double))
-        case .int32(let int):
-            return .number(.int(Int(int)))
-        case .int64(let int):
-            return .number(.int(Int(int)))
-        case .string(let string):
+        case let double as Double:
+            return Node(StructuredData.Number.double(double))
+        case let int32 as Int:
+            return Node(StructuredData.Number.int(int32))
+        case let int64 as StructuredData.Number:
+            return .number(int64)
+        case let string as String:
             return .string(string)
-        case .objectId(let objId):
+        case let objId as ObjectId:
             return .string(objId.hexString)
-        case .null:
-            return .null
-        case .array(let doc):
-            var arrayOfNodes: [Node] = []
-            for (_, val) in doc {
-                arrayOfNodes.append(val.node)
-            }
-            return .array(arrayOfNodes)
-        case .document(let doc):
+        case let null as StructuredData.Number:
+            return Node(null)
+        case let doc as Document:
+            let dictionary = doc
             var dictOfNodes: [String : Node] = [:]
-            for (key, val) in doc {
-                dictOfNodes[key] = val.node
+            for (key, _) in doc {
+                dictOfNodes[key] = dictionary.node
             }
             return .object(dictOfNodes)
-        case .binary(_, let data):
+        case let arrays as [Document]:
+            let array = arrays
+            var arrayOfNodes: [Node] = []
+                arrayOfNodes.append(array.node)
+            return .array(arrayOfNodes)
+        case let data as Bytes:
             return .bytes(data)
-        case .boolean(let bool): 
+        case let bool as Bool:
             return .bool(bool)
         default:
             print("[FluentMongo] Could not convert BSON to Node.")

@@ -4,13 +4,18 @@ import Fluent
 extension Fluent.Filter {
     public func makeAQT() throws -> MongoKitten.AQT {
         let query: MongoKitten.AQT
-
+        var unwrappedValue: String = ""
+        
         switch self.method {
         case .compare(let key, let comparison, let val):
+            if let valString = val.string {
+                unwrappedValue = valString
+            }
+  
             switch comparison {
             case .equals:
-                if let objId = try? ObjectId(val.bson.string), key == "_id" {
-                    let value = Value.objectId(objId)
+                if let objId = ObjectId(val.string), key == "_id" {
+                    let value = objId
                     query = .valEquals(key: key, val: value)
                 } else {
                     query = .valEquals(key: key, val: val.bson)
@@ -26,11 +31,13 @@ extension Fluent.Filter {
             case .notEquals:
                 query = .valNotEquals(key: key, val: val.bson)
             case .contains:
-                query = .contains(key: key, val: val.bson.string)
+                query = .containsElement(key: key, match: val.bson as! AQT)
             case .hasPrefix:
-                query = .startsWith(key: key, val: val.bson.string)
+                query = .startsWith(key: key, val: unwrappedValue)
             case .hasSuffix:
-                query = .endsWith(key: key, val: val.bson.string)
+                query = .endsWith(key: key, val: unwrappedValue)
+            case .custom(let comparison):
+                query = .contains(key: comparison, val: unwrappedValue, options: .caseInsensitive)
             }
         case .subset(let key, let scope, let values):
             switch scope {
@@ -52,16 +59,16 @@ extension Fluent.Filter {
                 query = .and(ands)
             }
         case .group(let relation, let filters):
-            let aqts = try filters.map { try $0.makeAQT() }
+            let aqts = try filters.map { try $0.wrapped?.makeAQT()}
 
             switch relation {
             case .and:
-                query = .and(aqts)
+                query = .and(aqts as! [AQT])
             case .or:
-                query = .or(aqts)
+                query = .or(aqts as! [AQT])
             }
+
         }
-        
         return query
     }
 }
