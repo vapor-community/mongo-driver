@@ -14,7 +14,6 @@ public class MongoDriver: Connection, Fluent.Driver{
     /// The `idType` will be accessed by those Entity implementations
     /// which do not themselves implement `Entity.idType`.
     var idType: IdentifierType = .uuid
-
     
     /**
         Describes the types of errors
@@ -149,7 +148,8 @@ public class MongoDriver: Connection, Fluent.Driver{
         let aqt = try query.makeAQT()
         let mkq = MKQuery(aqt: aqt)
         let sort: MongoKitten.Sort?
-        
+        let limit = Limit(count: query.limits.count, offset: 0)
+    
         if !query.sorts.isEmpty {
             sort = query.sorts.flatMap { fluentSort in
                 guard let fluentSort = fluentSort.wrapped else {
@@ -168,7 +168,7 @@ public class MongoDriver: Connection, Fluent.Driver{
         }else {
             cursor = try database[T.entity].find(mkq,
                                                  sortedBy: sort,
-                                                 skipping: query.limits.index(query.limits.count, offsetBy: 0),
+                                                 skipping: limit.offset,
                                                  limitedTo: query.limits.count)
     }
 
@@ -187,7 +187,9 @@ public class MongoDriver: Connection, Fluent.Driver{
             if key.description == idKey {
                 continue
             }
-            document[key.description] = val.wrapped?.bson
+            if let unwrappedVal = val.wrapped {
+                document[key.description] = unwrappedVal.bson
+            }
         }
 
         try database[T.entity].update(mkq, to: document, upserting: false, multiple: false, writeConcern: nil, stoppingOnError: true)
