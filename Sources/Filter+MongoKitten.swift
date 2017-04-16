@@ -31,7 +31,7 @@ extension Fluent.Filter {
             case .notEquals:
                 query = .valNotEquals(key: key, val: val.bson)
             case .contains:
-                query = .containsElement(key: key, match: val.bson as! AQT)
+                query = .contains(key: key, val: unwrappedValue, options: .caseInsensitive)
             case .hasPrefix:
                 query = .startsWith(key: key, val: unwrappedValue)
             case .hasSuffix:
