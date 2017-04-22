@@ -3,10 +3,9 @@ import Fluent
 import MongoKitten
 
 public class MongoDriver: Connection, Fluent.Driver{
-    public /// The naming convetion to use for foreign
     /// id keys, table names, etc.
     /// ex: snake_case vs. camelCase.
-    var keyNamingConvention: KeyNamingConvention = .snake_case
+    public var keyNamingConvention: KeyNamingConvention = .snake_case
     public var log: QueryLogCallback?
     
     public /// The default type for values stored against the identifier key.

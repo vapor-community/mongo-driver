@@ -7,11 +7,11 @@ extension Fluent.Query {
             fatalError("[Mongo] Unions not yet supported. Use nesting instead.")
         }
 
-        let aqts = try filters.map { try $0.wrapped?.makeAQT() }        
+       let aqts = try filters.flatMap { try $0.wrapped?.makeAQT() }
         if aqts.isEmpty {
             return .nothing
         }
 
-        return .and(aqts as! [AQT])
+        return .and(aqts)
     }
 }
