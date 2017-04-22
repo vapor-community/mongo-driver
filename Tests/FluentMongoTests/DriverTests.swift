@@ -37,11 +37,11 @@ class DriverTests: XCTestCase {
     }
     
     func clearUserCollection() {
-        let _ = try? database.delete(User.entity)
+        let _ = try? database.delete(User.self)
     }
     
     func createUser(suffix: String = "") -> User {
-        var user = User(id: nil, name: "Vapor\(suffix)", email: "vapor@qutheory.io")
+        let user = User(id: nil, name: "Vapor\(suffix)", email: "vapor@qutheory.io")
         User.database = database
         
         do {
@@ -97,7 +97,7 @@ class DriverTests: XCTestCase {
     func testModify() throws {
         User.database = database
         do {
-            var user = User(id: nil, name: "Vapor", email: "mongo@vapor.codes")
+            let user = User(id: nil, name: "Vapor", email: "mongo@vapor.codes")
             try user.save()
 
             guard let id = user.id else {
@@ -105,7 +105,7 @@ class DriverTests: XCTestCase {
                 return
             }
 
-            guard var fetch = try User.find(id) else {
+            guard let fetch = try User.find(id) else {
                 XCTFail("Could not fetch user")
                 return
             }
@@ -131,11 +131,11 @@ class DriverTests: XCTestCase {
             _ = createUser(suffix: "\(i)")
         }
         
-        let query = try User.query()
-        query.limit = Limit(count: 3, offset: 2)
+        let query = try User.makeQuery()
+        try query.limit(3, offset: 2)
         // query.sorts = [Sort(User.self, "name", .ascending)]
         let result = try query.all()
-        XCTAssertEqual(["Vapor2", "Vapor3", "Vapor4"], result.map { $0.name })
+        XCTAssertEqual(["Vapor2", "Vapor3", "Vapor4"], result.flatMap { $0.name })
     }
 
     func testSelectSortLimit() throws {
@@ -144,11 +144,11 @@ class DriverTests: XCTestCase {
             _ = createUser(suffix: "\(i)")
         }
         
-        let query = try User.query()
-        query.limit = Limit(count: 3, offset: 2)
-        query.sorts = [Sort(User.self, "name", .ascending)]
+        let query = try User.makeQuery()
+        try query.limit(3, offset: 2)
+        try query.sort(Sort(User.self, "name", .ascending))
         let result = try query.all()
-        XCTAssertEqual(["Vapor2", "Vapor3", "Vapor4"], result.map { $0.name })
+        XCTAssertEqual(["Vapor2", "Vapor3", "Vapor4"], result.flatMap { $0.name })
     }
 
     func testDeleteAll() throws {
@@ -157,7 +157,7 @@ class DriverTests: XCTestCase {
             _ = createUser(suffix: "\(i)")
         }
 
-        let query = try User.query()
+        let query = try User.makeQuery()
         try query.delete()
         
         let remaining = try query.all()
@@ -170,14 +170,14 @@ class DriverTests: XCTestCase {
             _ = createUser(suffix: "\(i%2)")
         }
         
-        let query = try User.query()
+        let query = try User.makeQuery()
         try query.filter("name", "Vapor0")
         
         try query.delete()
         
-        let remaining = try User.query().all()
+        let remaining = try User.makeQuery().all()
         XCTAssertEqual(5, remaining.count)
-        XCTAssertEqual(Array(repeating: "Vapor1", count: 5), remaining.map { $0.name })
+        XCTAssertEqual(Array(repeating: "Vapor1", count: 5), remaining.flatMap { $0.name })
     }
 
     func testDeleteLimit0Explicit() throws {
@@ -186,14 +186,14 @@ class DriverTests: XCTestCase {
             _ = createUser(suffix: "\(i%2)")
         }
         
-        let query = try User.query()
+        let query = try User.makeQuery()
         try query.filter("name", "Vapor0")
-        query.limit = Limit(count: 0)
+        try query.limit(0)
         try query.delete()
         
-        let remaining = try User.query().all()
+        let remaining = try User.makeQuery().all()
         XCTAssertEqual(5, remaining.count)
-        XCTAssertEqual(Array(repeating: "Vapor1", count: 5), remaining.map { $0.name })
+        XCTAssertEqual(Array(repeating: "Vapor1", count: 5), remaining.flatMap { $0.name })
     }
 
     func testDeleteLimit1() throws {
@@ -202,19 +202,19 @@ class DriverTests: XCTestCase {
             _ = createUser(suffix: "\(i%2)")
         }
         
-        let query = try User.query()
+        let query = try User.makeQuery()
         try query.filter("name", "Vapor0")
-        query.limit = Limit(count: 1)
+        try query.limit(1)
         try query.delete()
         
-        let remaining = try User.query().all()
+        let remaining = try User.makeQuery().all()
         XCTAssertEqual(9, remaining.count)
     }
 
     func testDeleteLimitInvalid() throws {
         do {
-            let query = try User.query()
-            query.limit = Limit(count: 5)
+            let query = try User.makeQuery()
+            try query.limit(5)
             try query.delete()
             XCTFail("Limit greater than 1 should fail")
         } catch {
