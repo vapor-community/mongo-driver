@@ -6,13 +6,13 @@ public class MongoDriver: Connection, Fluent.Driver{
     /// id keys, table names, etc.
     /// ex: snake_case vs. camelCase.
     public var keyNamingConvention: KeyNamingConvention = .snake_case
-    public var log: QueryLogCallback?
-    
-    public /// The default type for values stored against the identifier key.
+    public var queryLogger: QueryLogger?
+
+    /// The default type for values stored against the identifier key.
     ///
     /// The `idType` will be accessed by those Entity implementations
     /// which do not themselves implement `Entity.idType`.
-    var idType: IdentifierType = .uuid
+    public var idType: IdentifierType = .uuid
     
     /**
         Describes the types of errors
