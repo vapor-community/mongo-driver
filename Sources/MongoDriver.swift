@@ -52,7 +52,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             
             switch filter.method {
             case .compare(let key, let comparison, let value):
-                guard let value = value.convert(to: BSONData.self) else {
+                guard let value = value.makePrimitive() else {
                     throw Error.unsupported
                 }
                 

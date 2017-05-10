@@ -20,6 +20,8 @@ extension Primitive {
             return .number(.double(double))
         case let bool as Bool:
             return .bool(bool)
+        case let array as Array<Primitive>:
+            return .array(array.map { $0.makeNode() })
         case let document as Document:
             if document.validatesAsArray() {
                 return .array(document.arrayValue.map { $0.makeNode() })
@@ -103,9 +105,9 @@ extension RegularExpression : NodeConvertible {
 }
 
 extension Node : Primitive {
-    private func makePrimitive() -> Primitive? {
+    public func makePrimitive() -> Primitive? {
         guard case KittenContext.bson(let type) = self.context else {
-            return nil
+            return self.wrapped.convert(to: BSONData.self)
         }
         
         switch type {
@@ -114,7 +116,7 @@ extension Node : Primitive {
         case "RegularExpression":
             return try? RegularExpression(node: self)
         default:
-            return nil
+            return self.wrapped.convert(to: BSONData.self)
         }
     }
     
