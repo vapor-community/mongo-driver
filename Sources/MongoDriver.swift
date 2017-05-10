@@ -207,8 +207,23 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             }
             
             return Array(try collection.find(filter, sortedBy: sort, projecting: projection, skipping: skip, limitedTo: limit)).makeNode()
-        case .count:
-            return try collection.count(filter, limiting: limit, skipping: skip).makeNode()
+        case .aggregate(let field, let aggregate):
+            // TODO:
+            
+            switch aggregate {
+            case .count:
+                return try collection.count(filter, limiting: limit, skipping: skip).makeNode()
+            case .sum:
+                return false
+            case .average:
+                return false
+            case .min:
+                return false
+            case .max:
+                return false
+            case .custom(_):
+                return false
+            }
         case .modify:
             return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
         case .delete:
