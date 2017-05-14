@@ -50,13 +50,13 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 throw Error.unsupported
             }
             
+            let subQuery: MKQuery
+            
             switch filter.method {
             case .compare(let key, let comparison, let value):
                 guard let value = value.makePrimitive() else {
                     throw Error.unsupported
                 }
-                
-                let subQuery: MKQuery
                 
                 switch (comparison, value) {
                 case (.equals, _):
@@ -83,21 +83,23 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 default:
                     throw Error.unsupported
                 }
-                
-                if method == .and {
-                    query = query && subQuery
-                } else {
-                    query = query || subQuery
-                }
             case .group(let relation, let filters):
                 if relation == .and {
-                    return try makeQuery(filters, method: .and)
+                    subQuery = try makeQuery(filters, method: .and)
+                } else {
+                    subQuery = try makeQuery(filters, method: .or)
                 }
-                
-                return try makeQuery(filters, method: .or)
             case .subset(let key, let scope, let subValues):
                 // TODO:
                 throw Error.unsupported
+            }
+            
+            if query.makeDocument().count == 0  {
+                query = subQuery
+            } else if method == .and {
+                query = query && subQuery
+            } else {
+                query = query || subQuery
             }
         }
         
@@ -115,12 +117,18 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
     }
     
     private func makeSort(_ sorts: [RawOr<Fluent.Sort>]) -> MKSort? {
-        return sorts.flatMap {
+        let sortSpec = sorts.flatMap {
             $0.wrapped
-            }.map { sort in
-                let direction = sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending
-                return [sort.field: direction] as MKSort
-            }.reduce([:], +)
+        }.map { sort -> MKSort in
+            let direction = sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending
+            return [sort.field: direction] as MKSort
+        }.reduce([:], +)
+        
+        if sortSpec.makeDocument().count > 0 {
+            return sortSpec
+        }
+        
+        return nil
     }
     
     private func makeLimits(_ limits: [RawOr<Limit>]) throws -> (limit: Int?, skip: Int?) {
@@ -165,45 +173,53 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         let (limit, skip) = try makeLimits(query.limits)
         let projection = makeProjection(query.keys)
         
-        let lookups = query.joins.flatMap { $0.wrapped }.map {
-            AggregationPipeline.Stage.lookup(from: $0.joined.entity, localField: $0.baseKey, foreignField: $0.joinedKey, as: $0.baseKey)
-        }
-        
-        let aggregationPipeline: AggregationPipeline?
-        
-        if lookups.count > 0 {
-            var pipeline: AggregationPipeline = [
-                .match(filter)
-            ]
-            
-            if let limit = limit, let skip = skip {
-                pipeline.append(.limit(limit))
-                pipeline.append(.skip(skip))
-            }
-            
-            for stage in lookups {
-                pipeline.append(stage)
-            }
-            
-            if let sort = sort {
-                pipeline.append(.sort(sort))
-            }
-            
-            if let projection = projection {
-                pipeline.append(.project(projection))
-            }
-            
-            aggregationPipeline = pipeline
-        } else {
-            aggregationPipeline = nil
-        }
+//        let lookups = query.joins.flatMap { $0.wrapped }.map {
+//            AggregationPipeline.Stage.lookup(from: $0.joined.entity, localField: $0.baseKey, foreignField: $0.joinedKey, as: $0.baseKey)
+//        }
+//        
+//        let aggregationPipeline: AggregationPipeline?
+//        
+//        if lookups.count > 0 {
+//            var pipeline: AggregationPipeline = [
+//                .match(filter)
+//            ]
+//            
+//            if let limit = limit, let skip = skip {
+//                pipeline.append(.limit(limit))
+//                pipeline.append(.skip(skip))
+//            }
+//            
+//            for stage in lookups {
+//                pipeline.append(stage)
+//            }
+//            
+//            if let sort = sort, sort.makeDocument().count > 0 {
+//                pipeline.append(.sort(sort))
+//            }
+//            
+//            if let projection = projection, projection.makeDocument().count > 0 {
+//                pipeline.append(.project(projection))
+//            }
+//            
+//            aggregationPipeline = pipeline
+//        } else {
+//            aggregationPipeline = nil
+//        }
         
         switch query.action {
         case .create:
             return try collection.insert(document).makeNode()
         case .fetch:
-            if let aggregationPipeline = aggregationPipeline {
-                return Array(try collection.aggregate(aggregationPipeline)).makeNode()
+            if let lookup = query.joins.first?.wrapped {
+                let results = try self[lookup.joined.entity].aggregate([
+                    .match(filter),
+                    .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
+                    .project(["_id"]),
+                    .unwind("$_id"),
+                    .replaceRoot(withExpression: "$_id"),
+                ])
+                
+                return Array(results).makeNode()
             }
             
             return Array(try collection.find(filter, sortedBy: sort, projecting: projection, skipping: skip, limitedTo: limit)).makeNode()

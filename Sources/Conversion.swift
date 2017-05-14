@@ -70,19 +70,16 @@ extension Binary : NodeConvertible {
 
 extension ObjectId : NodeConvertible {
     public func makeNode(in context: Context?) -> Node {
-        return Node(.string(self.hexString), in: KittenContext.bson(type: "ObjectId"))
+        return Node(.string("oid:" + self.hexString))
     }
     
     public init(node: Node) throws {
-        guard case KittenContext.bson(let type) = node.context, type == "ObjectId" else {
+        guard var string = node.string, string.hasPrefix("oid:") else {
             throw NodeError.unableToConvert(input: node, expectation: "\(ObjectId.self)", path: [])
         }
         
-        guard let string = node.string, let objectId = try? ObjectId(string) else {
-            throw NodeError.unableToConvert(input: node, expectation: "\(ObjectId.self)", path: [])
-        }
-        
-        self = objectId
+        string.characters.removeFirst(4)
+        self = try ObjectId(string)
     }
 }
 
@@ -106,18 +103,7 @@ extension RegularExpression : NodeConvertible {
 
 extension Node : Primitive {
     public func makePrimitive() -> Primitive? {
-        guard case KittenContext.bson(let type) = self.context else {
-            return self.wrapped.convert(to: BSONData.self)
-        }
-        
-        switch type {
-        case "ObjectId":
-            return try? ObjectId(node: self).makeBinary()
-        case "RegularExpression":
-            return try? RegularExpression(node: self)
-        default:
-            return self.wrapped.convert(to: BSONData.self)
-        }
+        return self.wrapped.convert(to: BSONData.self)
     }
     
     public func makeBinary() -> Bytes {
@@ -150,6 +136,10 @@ extension StructuredData : Convertible {
                 return uint.convert(to: type)
             }
         case .string(let string):
+            if string.hasPrefix("oid:") {
+                return (try? ObjectId(node: Node(self))) as? DT.SupportedValue
+            }
+            
             return string.convert(to: type)
         case .array(let array):
             return array.convert(to: type)

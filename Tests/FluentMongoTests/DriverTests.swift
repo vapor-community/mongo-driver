@@ -13,6 +13,7 @@ class DriverTests: XCTestCase {
     let driver: MongoDB = try! MongoDB("mongodb://localhost/fluent")
     
     func testAll() throws {
+        try driver.drop()
         let db = Fluent.Database(driver)
         let tester = Tester(database: db)
         try tester.testAll()
