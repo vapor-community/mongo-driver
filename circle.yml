@@ -1,4 +1,11 @@
 dependencies:
+  cache_directories:
+    - ../mongodb-linux-x86_64-ubuntu1204-3.2.13
+  pre:
+    - if [[ ! -d ../mongodb-linux-x86_64-ubuntu1204-3.2.13 ]]; then wget http://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1204-3.2.13.tgz -P ../ && tar xvzf ../mongodb-linux-x86_64-ubuntu1204-3.2.13.tgz -C ../; fi
+    - sudo service mongod stop
+    - sudo cp ../mongodb-linux-x86_64-ubuntu1204-3.2.13/bin/* /usr/bin
+    - sudo service mongod start
   override:
     - eval "$(curl -sL https://apt.vapor.sh)"
     - sudo apt-get install vapor
