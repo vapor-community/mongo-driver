@@ -106,14 +106,16 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return query
     }
     
-    private func makeProjection(_ keys: [RawOr<String>]) -> Projection? {
-        let keys = keys.flatMap { $0.wrapped }.map { [$0] as Projection }
-        
-        if keys.count > 0 {
-            return keys.reduce([], +)
-        } else {
-            return nil
-        }
+    private func makeProjection(_ keys: [RawOr<ComputedField>]) -> Projection? {
+//        let keys = keys.flatMap { $0.wrapped }.map { [$0.key] as Projection }
+//        
+//        if keys.count > 0 {
+//            return keys.reduce([], +)
+//        } else {
+//            return nil
+//        }
+        // TODO: 
+        return nil
     }
     
     private func makeSort(_ sorts: [RawOr<Fluent.Sort>]) -> MKSort? {
@@ -171,7 +173,6 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         let document = try makeDocument(query.data)
         let sort = makeSort(query.sorts)
         let (limit, skip) = try makeLimits(query.limits)
-        let projection = makeProjection(query.keys)
         
 //        let lookups = query.joins.flatMap { $0.wrapped }.map {
 //            AggregationPipeline.Stage.lookup(from: $0.joined.entity, localField: $0.baseKey, foreignField: $0.joinedKey, as: $0.baseKey)
@@ -209,7 +210,9 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         switch query.action {
         case .create:
             return try collection.insert(document).makeNode()
-        case .fetch:
+        case .fetch(let fields):
+            let projection = makeProjection(fields)
+            
             if let lookup = query.joins.first?.wrapped {
                 let results = try self[lookup.joined.entity].aggregate([
                     .match(filter),
@@ -228,7 +231,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             
             switch aggregate {
             case .count:
-                return try collection.count(filter, limiting: limit, skipping: skip).makeNode()
+                return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
             case .sum:
                 return false
             case .average:
@@ -243,7 +246,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         case .modify:
             return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
         case .delete:
-            return try collection.remove(filter, limiting: limit ?? 1).makeNode()
+            return try collection.remove(filter, limitedTo: limit ?? 1).makeNode()
         case .schema(let schema):
             switch schema {
             case .createIndex(_):
