@@ -219,10 +219,11 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                     .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
                     .project(["_id"]),
                     .unwind("$_id"),
-                    .replaceRoot(withExpression: "$_id"),
                 ])
                 
-                return Array(results).makeNode()
+                return Array(results.flatMap({ input in
+                    return Document(input["_id"])
+                })).makeNode()
             }
             
             return Array(try collection.find(filter, sortedBy: sort, projecting: projection, skipping: skip, limitedTo: limit)).makeNode()
