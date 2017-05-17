@@ -2,19 +2,30 @@ import Foundation
 import Fluent
 import MongoKitten
 
+/// Conforms MongoKitten.Database as a Fluent.Driver and a Fluent.Connection.
+///
+/// This ensures MongoDB databases can be used for Fluent. Connections are handled by MongoKitten internally.
+///
+/// MongoKitten.Database can be initialized by it's original connection string and other initializers. This ensures that all new MongoKitten connection string features will also be supported.
 extension MongoKitten.Database : Fluent.Driver, Connection {
+    /// MongoDB's identifier is always in the `_id` field
     public var idKey: String {
         return "_id"
     }
     
+    /// Generally, the identifier is ObjectId. It's a computed property since this is in an extension, currently ObjectId is the only supported type.
+    ///
+    /// TODO: Support other identifier types
     public var idType: IdentifierType {
         return .custom("ObjectId")
     }
     
+    /// Fewer characters mean slightly faster indexes
     public var keyNamingConvention: KeyNamingConvention {
         return .camelCase
     }
     
+    /// This is unsupported for now
     public var queryLogger: QueryLogger? {
         get {
             return nil
@@ -24,24 +35,38 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
     }
     
+    /// All FluentMongo Driver Errors
     public enum Error : Swift.Error {
+        /// No query operation type has been provided
         case invalidQuery
+        
+        /// Invalid Node data has been provided by Fluent that cannot be transformed into a Document
         case invalidData
+        
+        /// A (currently) unsupported feature
+        ///
+        /// TODO: Never throw this error. When this isn't being thrown anymore we're good :)
         case unsupported
     }
     
+    /// Connection is handled internally in MongoKitten
     public func makeConnection(_ type: ConnectionType) throws -> Connection {
         return self
     }
     
+    /// The connection status is calculated by MongoKitten
     public var isClosed: Bool {
         return !server.isConnected
     }
     
+    /// The query type
     private enum Method {
         case and, or
     }
     
+    /// Creates a MongoKitten Query from an array of Fluent.Filter
+    ///
+    /// TODO: Support all MongoDB operations
     private func makeQuery(_ filters: [RawOr<Filter>], method: Method) throws -> MKQuery {
         var query = MKQuery()
         
@@ -77,7 +102,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                     subQuery = MKQuery(aqt: AQT.endsWith(key: key, val: value))
                 case (.hasPrefix, let value as String):
                     subQuery = MKQuery(aqt: AQT.startsWith(key: key, val: value))
-                case (.custom(let operation), _):
+                case (.custom(_), _):
                     // TODO:
                     throw Error.unsupported
                 default:
@@ -89,7 +114,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 } else {
                     subQuery = try makeQuery(filters, method: .or)
                 }
-            case .subset(let key, let scope, let subValues):
+            case .subset(_, _, _):
                 // TODO:
                 throw Error.unsupported
             }
@@ -106,18 +131,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return query
     }
     
-    private func makeProjection(_ keys: [RawOr<ComputedField>]) -> Projection? {
-//        let keys = keys.flatMap { $0.wrapped }.map { [$0.key] as Projection }
-//        
-//        if keys.count > 0 {
-//            return keys.reduce([], +)
-//        } else {
-//            return nil
-//        }
-        // TODO: 
-        return nil
-    }
-    
+    /// Transforms Fluent.Sort into MongoKitten.Sort so that it can be passed to MongoKitten
     private func makeSort(_ sorts: [RawOr<Fluent.Sort>]) -> MKSort? {
         let sortSpec = sorts.flatMap {
             $0.wrapped
@@ -133,6 +147,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return nil
     }
     
+    /// Transforms [Fluent.Limit] into a Limit+Skip parameter for mutating operations
     private func makeLimits(_ limits: [RawOr<Limit>]) throws -> (limit: Int?, skip: Int?) {
         guard let limit = limits.first?.wrapped else {
             return (nil, nil)
@@ -145,7 +160,10 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return (limit.count, limit.offset)
     }
     
-    public func makeDocument(_ data: [RawOr<String>: RawOr<Node>]) throws -> Document {
+    /// Transforms Fluent Query data into a Document
+    ///
+    /// Used for Create/Update operations
+    private func makeDocument(_ data: [RawOr<String>: RawOr<Node>]) throws -> Document {
         var document = Document()
         
         for (key, value) in data {
@@ -163,6 +181,9 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return document
     }
     
+    /// Exequtes a Fluent.Query for an Entity
+    ///
+    ///
     public func query<E>(_ query: RawOr<Fluent.Query<E>>) throws -> Node where E : Entity {
         guard let query = query.wrapped else {
             throw Error.invalidQuery
@@ -174,45 +195,11 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         let sort = makeSort(query.sorts)
         let (limit, skip) = try makeLimits(query.limits)
         
-//        let lookups = query.joins.flatMap { $0.wrapped }.map {
-//            AggregationPipeline.Stage.lookup(from: $0.joined.entity, localField: $0.baseKey, foreignField: $0.joinedKey, as: $0.baseKey)
-//        }
-//        
-//        let aggregationPipeline: AggregationPipeline?
-//        
-//        if lookups.count > 0 {
-//            var pipeline: AggregationPipeline = [
-//                .match(filter)
-//            ]
-//            
-//            if let limit = limit, let skip = skip {
-//                pipeline.append(.limit(limit))
-//                pipeline.append(.skip(skip))
-//            }
-//            
-//            for stage in lookups {
-//                pipeline.append(stage)
-//            }
-//            
-//            if let sort = sort, sort.makeDocument().count > 0 {
-//                pipeline.append(.sort(sort))
-//            }
-//            
-//            if let projection = projection, projection.makeDocument().count > 0 {
-//                pipeline.append(.project(projection))
-//            }
-//            
-//            aggregationPipeline = pipeline
-//        } else {
-//            aggregationPipeline = nil
-//        }
-        
         switch query.action {
         case .create:
             return try collection.insert(document).makeNode()
-        case .fetch(let fields):
-            let projection = makeProjection(fields)
-            
+        case .fetch(_):
+            // TODO: Support ComputedProperties
             if let lookup = query.joins.first?.wrapped {
                 let results = try self[lookup.joined.entity].aggregate([
                     .match(filter),
@@ -226,23 +213,30 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 })).makeNode()
             }
             
-            return Array(try collection.find(filter, sortedBy: sort, projecting: projection, skipping: skip, limitedTo: limit)).makeNode()
+            return Array(try collection.find(filter, sortedBy: sort, skipping: skip, limitedTo: limit)).makeNode()
+        // Aggregates aren't like an Aggregation Pipeline
+        // They're like a query on all occurences of a field
         case .aggregate(let field, let aggregate):
-            // TODO:
-            
             switch aggregate {
             case .count:
-                return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+                // Counting is not necessarily an aggregation operation in MongoDB
+                if let field = field {
+                    let filter = filter && Query(aqt: .exists(key: field, exists: true))
+                    return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+                } else {
+                    return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+                }
             case .sum:
-                return false
+                throw Error.unsupported
             case .average:
-                return false
+                throw Error.unsupported
             case .min:
-                return false
+                throw Error.unsupported
             case .max:
-                return false
+                throw Error.unsupported
             case .custom(_):
-                return false
+                // TODO: Implement
+                throw Error.unsupported
             }
         case .modify:
             return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
@@ -259,8 +253,10 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 
                 return false
             case .create(_, _):
+                // Schema's are managed by Fluent. MongoDB doesn't require a schema. No need to support this, for now.
                 return true
             case .modify(_, _, _, _):
+                // Same here. Schema's are managed by Fluent. MongoDB doesn't require a schema.
                 return true
             case .delete:
                 try collection.drop()

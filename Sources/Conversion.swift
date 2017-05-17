@@ -3,11 +3,11 @@ import Fluent
 import MongoKitten
 import Cheetah
 
-enum KittenContext : Context {
-    case bson(type: String)
-}
-
 extension Primitive {
+    /// Transforms a Primitive to a Node.
+    /// Most types are 1:1 converted
+    ///
+    /// Types that aren't representable in Fluent are either `.null` or represented with a identifyable prefix such as `oid:<hexstring>` for ObjectId
     public func makeNode() -> Node {
         switch self {
         case let string as String:
@@ -55,10 +55,16 @@ extension Primitive {
 }
 
 extension Binary : NodeConvertible {
+    /// Makes a Node from Binary
+    ///
+    /// TypeIdentifier metadata gets lost
     public func makeNode(in context: Context?) -> Node {
         return .bytes([UInt8](self.data))
     }
     
+    /// Makes a Binary blob from Node.binary
+    ///
+    /// TypeIdentifier metadata is lost
     public init(node: Node) throws {
         guard let bytes = node.bytes else {
             throw NodeError.unableToConvert(input: node, expectation: "\(Bytes.self)", path: [])
@@ -69,10 +75,12 @@ extension Binary : NodeConvertible {
 }
 
 extension ObjectId : NodeConvertible {
+    /// Converts the hexString to a Node.string but prefixes the hexstring with `oid:`
     public func makeNode(in context: Context?) -> Node {
         return Node(.string("oid:" + self.hexString))
     }
     
+    /// Checks for and removed the `oid:` prefix and converts the hexString to an Objectid
     public init(node: Node) throws {
         guard var string = node.string, string.hasPrefix("oid:") else {
             throw NodeError.unableToConvert(input: node, expectation: "\(ObjectId.self)", path: [])
@@ -84,16 +92,23 @@ extension ObjectId : NodeConvertible {
 }
 
 extension RegularExpression : NodeConvertible {
+    /// RegularExpression has the regex string as well as options. So we're using an array for the data here.
+    ///
+    /// To identify this as a regex, the String `"regex"` will be used as the first element.
+    ///
+    /// Using this pattern, convert RegularExpression to a Node
     public func makeNode(in context: Context?) -> Node {
-        return Node(.array([.string(self.pattern), .number(.uint(self.options.rawValue))]), in: KittenContext.bson(type: "RegularExpression"))
+        return Node(.array([.string("regex"), .string(self.pattern), .number(.uint(self.options.rawValue))]))
     }
     
+    
+    /// RegularExpression has the regex string as well as options. So we're using an array for the data here.
+    ///
+    /// To identify this as a regex, the String `"regex"` will be used as the first element
+    ///
+    /// Using this pattern, try to convert Node to a RegularExpression
     public init(node: Node) throws {
-        guard case KittenContext.bson(let type) = node.context, type == "RegularExpression" else {
-            throw NodeError.unableToConvert(input: node, expectation: "\(RegularExpression.self)", path: [])
-        }
-        
-        guard let array = node.array, array.count == 2, let pattern = array[0].string, let options = array[1].uint else {
+        guard let array = node.array, array.count == 3, array[0].string == "regex", let pattern = array[1].string, let options = array[2].uint else {
             throw NodeError.unableToConvert(input: node, expectation: "\(RegularExpression.self)", path: [])
         }
         
@@ -102,18 +117,22 @@ extension RegularExpression : NodeConvertible {
 }
 
 extension Node : Primitive {
+    /// Convert the StructuredData to a Primitive for easy embedding in a Document
     public func makePrimitive() -> Primitive? {
         return self.wrapped.convert(to: BSONData.self)
     }
     
+    /// The Binary data of this Primitive as BSON binary data
     public func makeBinary() -> Bytes {
         return (makePrimitive() ?? self.wrapped).makeBinary()
     }
     
+    /// For conformance to KittenCore, allow loose conversion
     public func convert<DT>(to type: DT.Type) -> DT.SupportedValue? where DT : DataType {
         return (makePrimitive() ?? self.wrapped).convert(to: DT.self)
     }
     
+    /// The BSON type identifier of this Node's wrapped primitive
     public var typeIdentifier: Byte {
         return (makePrimitive() ?? self.wrapped).typeIdentifier
     }
