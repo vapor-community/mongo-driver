@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import FluentMongo
+@testable import MongoDriver
 import FluentTester
 
 class DriverTests: XCTestCase {
