@@ -2,176 +2,271 @@ import Foundation
 import Fluent
 import MongoKitten
 
-public class MongoDriver: Fluent.Driver {
-    
-    /**
-        Describes the types of errors
-        this driver can throw.
-    */
-    public enum Error: Swift.Error {
-        case noData
-        case noQuery
-        case unsupported(String)
+/// Conforms MongoKitten.Database as a Fluent.Driver and a Fluent.Connection.
+///
+/// This ensures MongoDB databases can be used for Fluent. Connections are handled by MongoKitten internally.
+///
+/// MongoKitten.Database can be initialized by it's original connection string and other initializers. This ensures that all new MongoKitten connection string features will also be supported.
+extension MongoKitten.Database : Fluent.Driver, Connection {
+    /// MongoDB's identifier is always in the `_id` field
+    public var idKey: String {
+        return "_id"
     }
     
-    let database: MongoKitten.Database
-    
-    /**
-        Creates a new `MongoDriver` with
-        the given database name, credentials, and port.
-    */
-    public init(database: String, user: String, password: String, host: String, port: Int) throws {
-        guard let escapedUser = user.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
-          throw Error.unsupported("Failed to percent encode username")
-        }
-        guard let escapedPassword = password.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
-          throw Error.unsupported("Failed to percent encode password")
-        }
-        let server = try Server("mongodb://\(escapedUser):\(escapedPassword)@\(host):\(port)", automatically: true)
-        self.database = server[database]
+    /// Generally, the identifier is ObjectId. It's a computed property since this is in an extension, currently ObjectId is the only supported type.
+    ///
+    /// TODO: Support other identifier types
+    public var idType: IdentifierType {
+        return .custom("ObjectId")
     }
-
-    /**
-        MongoDB uses `_id` as the main identifier.
-    */
-    public var idKey: String = "_id"
     
-    /**
-        Executes a query on the current MongoDB database.
-    */
-    public func query<T : Entity>(_ query: Fluent.Query<T>) throws -> Node {
-        switch query.action {
-        case .fetch:
-            let cursor = try select(query)
-            var items: [Node] = []
-            for document in cursor {
-                let i = convert(document: document)
-                items.append(i)
+    /// Fewer characters mean slightly faster indexes
+    public var keyNamingConvention: KeyNamingConvention {
+        return .camelCase
+    }
+    
+    /// This is unsupported for now
+    public var queryLogger: QueryLogger? {
+        get {
+            return nil
+        }
+        set {
+            print("Query logging is unsupported")
+        }
+    }
+    
+    /// All FluentMongo Driver Errors
+    public enum Error : Swift.Error {
+        /// No query operation type has been provided
+        case invalidQuery
+        
+        /// Invalid Node data has been provided by Fluent that cannot be transformed into a Document
+        case invalidData
+        
+        /// A (currently) unsupported feature
+        ///
+        /// TODO: Never throw this error. When this isn't being thrown anymore we're good :)
+        case unsupported
+    }
+    
+    /// Connection is handled internally in MongoKitten
+    public func makeConnection(_ type: ConnectionType) throws -> Connection {
+        return self
+    }
+    
+    /// The connection status is calculated by MongoKitten
+    public var isClosed: Bool {
+        return !server.isConnected
+    }
+    
+    /// The query type
+    private enum Method {
+        case and, or
+    }
+    
+    /// Creates a MongoKitten Query from an array of Fluent.Filter
+    ///
+    /// TODO: Support all MongoDB operations
+    private func makeQuery(_ filters: [RawOr<Filter>], method: Method) throws -> MKQuery {
+        var query = MKQuery()
+        
+        for filter in filters {
+            guard let filter = filter.wrapped else {
+                throw Error.unsupported
             }
-            return try items.makeNode()
-        case .create:
-            let document = try insert(query)
-            if let documentId = getId(document: document) {
-                return documentId
+            
+            let subQuery: MKQuery
+            
+            switch filter.method {
+            case .compare(let key, let comparison, let value):
+                guard let value = value.makePrimitive() else {
+                    throw Error.unsupported
+                }
+                
+                switch (comparison, value) {
+                case (.equals, _):
+                    subQuery = key == value
+                case (.greaterThan, _):
+                    subQuery = key > value
+                case (.greaterThanOrEquals, _):
+                    subQuery = key >= value
+                case (.lessThan, _):
+                    subQuery = key < value
+                case (.lessThanOrEquals, _):
+                    subQuery = key <= value
+                case (.notEquals, _):
+                    subQuery = key != value
+                case (.contains, let value as String):
+                    subQuery = MKQuery(aqt: AQT.contains(key: key, val: value, options: []))
+                case (.hasSuffix, let value as String):
+                    subQuery = MKQuery(aqt: AQT.endsWith(key: key, val: value))
+                case (.hasPrefix, let value as String):
+                    subQuery = MKQuery(aqt: AQT.startsWith(key: key, val: value))
+                case (.custom(_), _):
+                    // TODO:
+                    throw Error.unsupported
+                default:
+                    throw Error.unsupported
+                }
+            case .group(let relation, let filters):
+                if relation == .and {
+                    subQuery = try makeQuery(filters, method: .and)
+                } else {
+                    subQuery = try makeQuery(filters, method: .or)
+                }
+            case .subset(_, _, _):
+                // TODO:
+                throw Error.unsupported
+            }
+            
+            if query.makeDocument().count == 0  {
+                query = subQuery
+            } else if method == .and {
+                query = query && subQuery
             } else {
-                throw MongoError.insertFailure(documents: [document], error: nil)
+                query = query || subQuery
             }
-        case .delete:
-            try delete(query)
-            return Node.null
+        }
+        
+        return query
+    }
+    
+    /// Transforms Fluent.Sort into MongoKitten.Sort so that it can be passed to MongoKitten
+    private func makeSort(_ sorts: [RawOr<Fluent.Sort>]) -> MKSort? {
+        let sortSpec = sorts.flatMap {
+            $0.wrapped
+        }.map { sort -> MKSort in
+            let direction = sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending
+            return [sort.field: direction] as MKSort
+        }.reduce([:], +)
+        
+        if sortSpec.makeDocument().count > 0 {
+            return sortSpec
+        }
+        
+        return nil
+    }
+    
+    /// Transforms [Fluent.Limit] into a Limit+Skip parameter for mutating operations
+    private func makeLimits(_ limits: [RawOr<Limit>]) throws -> (limit: Int?, skip: Int?) {
+        guard let limit = limits.first?.wrapped else {
+            return (nil, nil)
+        }
+        
+        guard limits.count == 1 else {
+            throw Error.unsupported
+        }
+        
+        return (limit.count, limit.offset)
+    }
+    
+    /// Transforms Fluent Query data into a Document
+    ///
+    /// Used for Create/Update operations
+    private func makeDocument(_ data: [RawOr<String>: RawOr<Node>]) throws -> Document {
+        var document = Document()
+        
+        for (key, value) in data {
+            guard let key = key.wrapped, let value = value.wrapped else {
+                throw Error.invalidData
+            }
+            
+            document[key] = value
+        }
+        
+        if let key = document.type(at: "_id"), case ElementType.nullValue = key {
+            document["_id"] = nil
+        }
+        
+        return document
+    }
+    
+    /// Exequtes a Fluent.Query for an Entity
+    ///
+    ///
+    public func query<E>(_ query: RawOr<Fluent.Query<E>>) throws -> Node where E : Entity {
+        guard let query = query.wrapped else {
+            throw Error.invalidQuery
+        }
+        
+        let collection = self[E.entity]
+        let filter = try makeQuery(query.filters, method: .and)
+        let document = try makeDocument(query.data)
+        let sort = makeSort(query.sorts)
+        let (limit, skip) = try makeLimits(query.limits)
+        
+        switch query.action {
+        case .create:
+            return try collection.insert(document).makeNode()
+        case .fetch(let computedProperties):
+            guard computedProperties.count == 0 else {
+                throw Error.unsupported
+            }
+            
+            // TODO: Support ComputedProperties
+            if let lookup = query.joins.first?.wrapped {
+                let results = try self[lookup.joined.entity].aggregate([
+                    .match(filter),
+                    .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
+                    .project(["_id"]),
+                    .unwind("$_id"),
+                ])
+                
+                return Array(results.flatMap({ input in
+                    return Document(input["_id"])
+                })).makeNode()
+            }
+            
+            return Array(try collection.find(filter, sortedBy: sort, skipping: skip, limitedTo: limit)).makeNode()
+        // Aggregates aren't like an Aggregation Pipeline
+        // They're like a query on all occurences of a field
+        case .aggregate(let field, let aggregate):
+            switch aggregate {
+            case .count:
+                // Counting is not necessarily an aggregation operation in MongoDB
+                if let field = field {
+                    let filter = filter && Query(aqt: .exists(key: field, exists: true))
+                    return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+                } else {
+                    return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+                }
+            case .sum:
+                throw Error.unsupported
+            case .average:
+                throw Error.unsupported
+            case .min:
+                throw Error.unsupported
+            case .max:
+                throw Error.unsupported
+            case .custom(_):
+                // TODO: Implement
+                throw Error.unsupported
+            }
         case .modify:
-            try modify(query)
-            return query.data ?? Node.null
-        default:
-            throw Error.unsupported("Action: \(query.action) is not supported.")
-        }
-    }
-    
-    public func schema(_ schema: Schema) throws {
-        switch schema {
-        case .delete(let entity):
-            try database[entity].drop()
-        default:
-            return
-            // No schemas in Mongo to modify or create
-        }
-    }
-    
-    public func raw(_ raw: String, _ values: [Node]) throws -> Node {
-        throw Error.unsupported("Mongo does not support raw queries.")
-    }
-
-    // MARK: Private
-    
-    private func convert(document: Document) -> Node {
-        return document.makeBsonValue().node
-    }
-
-    private func getId(document: Document) -> Node? {
-        return convert(document: document)[idKey]
-    }
-
-    private func delete<T: Entity>(_ query: Fluent.Query<T>) throws {
-        switch (query.filters.count, query.limit?.count ?? 0) {
-        case (0, 0):
-            try database[query.entity].drop()
-        case (_, 0):
-            // Limit 0: delete all matching documents
-            let aqt = try query.makeAQT()
-            let mkq = MKQuery(aqt: aqt)
-            try database[query.entity].remove(matching: mkq)
-        case (_, 1):
-            // Limit 1: delete first matching document
-            let aqt = try query.makeAQT()
-            let mkq = MKQuery(aqt: aqt)
-            try database[query.entity].remove(matching: mkq, limitedTo: 1, stoppingOnError: true)
-        case (_, _):
-            throw Error.unsupported("Mongo only supports limit 0 (all documents) or limit 1 (single document) for deletes")
-        }
-    }
-
-    private func insert<T: Entity>(_ query: Fluent.Query<T>) throws -> Document {
-        guard let data = query.data?.nodeObject else {
-            throw Error.noData
-        }
-        var document: Document = [:]
-        
-        for (key, val) in data {
-            if key == idKey && val == .null {
-                continue
+            return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
+        case .delete:
+            return try collection.remove(filter, limitedTo: limit ?? 1).makeNode()
+        case .schema(let schema):
+            switch schema {
+            case .createIndex(_):
+                print("Please create indexes this through MongoKitten")
+                
+                return false
+            case .deleteIndex(_):
+                print("Please delete indexes this through MongoKitten")
+                
+                return false
+            case .create(_, _):
+                // Schema's are managed by Fluent. MongoDB doesn't require a schema. No need to support this, for now.
+                return true
+            case .modify(_, _, _, _):
+                // Same here. Schema's are managed by Fluent. MongoDB doesn't require a schema.
+                return true
+            case .delete:
+                try collection.drop()
+                
+                return true
             }
-            document[key] = val.bson
         }
-        
-        return try database[query.entity].insert(document)
-    }
-
-    private func select<T: Entity>(_ query: Fluent.Query<T>) throws -> Cursor<Document> {
-        let cursor: Cursor<Document>
-
-        let aqt = try query.makeAQT()
-        let mkq = MKQuery(aqt: aqt)
-        let sortDocument: Document?
-        
-        if !query.sorts.isEmpty {
-            let elements = query.sorts.map { ($0.field, $0.direction == .ascending ? Value.int32(1) : Value.int32(-1)) }
-            sortDocument = Document(dictionaryElements: elements)
-        } else {
-            sortDocument = nil
-        }
-        
-        if let limit = query.limit {
-            cursor = try database[query.entity].find(matching: mkq,
-                                                     sortedBy: sortDocument,
-                                                     skipping: Int32(limit.offset),
-                                                     limitedTo: Int32(limit.count))
-        } else {
-            cursor = try database[query.entity].find(matching: mkq,
-                                                     sortedBy: sortDocument)
-        }
-
-        return cursor
-    }
-
-    private func modify<T: Entity>(_ query: Fluent.Query<T>) throws {
-        guard let data = query.data?.nodeObject else {
-            throw Error.noData
-        }
-
-
-        let aqt = try query.makeAQT()
-        let mkq = MKQuery(aqt: aqt)
-
-        var document: Document = [:]
-
-        for (key, val) in data {
-            if key == idKey {
-                continue
-            }
-            document[key] = val.bson
-        }
-
-        try database[query.entity].update(matching: mkq, to: document)
     }
 }
-
