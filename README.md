@@ -1,10 +1,11 @@
 # Mongo Driver for Fluent
 
-![Swift](http://img.shields.io/badge/swift-3.0-brightgreen.svg)
-[![CircleCI](https://circleci.com/gh/vapor/mongo-driver.svg?style=shield)](https://circleci.com/gh/vapor/core)
+![Swift](http://img.shields.io/badge/swift-3.1-brightgreen.svg)
 [![Slack Status](http://vapor.team/badge.svg)](http://vapor.team)
 
 ## Install Mongo
+
+For more instructions, check out https://docs.mongodb.com/master/administration/install-community/.
 
 ### OS X
 
