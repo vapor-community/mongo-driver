@@ -198,7 +198,11 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         switch query.action {
         case .create:
             return try collection.insert(document).makeNode()
-        case .fetch(_):
+        case .fetch(let computedProperties):
+            guard computedProperties.count == 0 else {
+                throw Error.unsupported
+            }
+            
             // TODO: Support ComputedProperties
             if let lookup = query.joins.first?.wrapped {
                 let results = try self[lookup.joined.entity].aggregate([

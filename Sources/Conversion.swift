@@ -108,7 +108,11 @@ extension RegularExpression : NodeConvertible {
     ///
     /// Using this pattern, try to convert Node to a RegularExpression
     public init(node: Node) throws {
-        guard let array = node.array, array.count == 3, array[0].string == "regex", let pattern = array[1].string, let options = array[2].uint else {
+        guard let array = node.array,
+            array.count == 3,
+            array[0].string == "regex",
+            let pattern = array[1].string,
+                let options = array[2].uint else {
             throw NodeError.unableToConvert(input: node, expectation: "\(RegularExpression.self)", path: [])
         }
         
