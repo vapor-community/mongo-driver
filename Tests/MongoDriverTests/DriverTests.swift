@@ -13,6 +13,7 @@ class DriverTests: XCTestCase {
             ("testTimestamps", testTimestamps),
             ("testSoftDelete", testSoftDelete),
             ("testIndex", testIndex),
+            ("testSubset", testSubset),
         ]
     }
     
@@ -65,5 +66,12 @@ class DriverTests: XCTestCase {
         let db = Fluent.Database(driver)
         let tester = Tester(database: db)
         try tester.testIndex()
+    }
+
+    func testSubset() throws {
+        try driver.drop()
+        let db = Fluent.Database(driver)
+        let tester = Tester(database: db)
+        try tester.testSubset()
     }
 }
