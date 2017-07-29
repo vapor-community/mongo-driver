@@ -24,7 +24,7 @@ extension Primitive {
             return .array(array.map { $0.makeNode() })
         case let document as Document:
             if document.validatesAsArray() {
-                return .array(document.arrayValue.map { $0.makeNode() })
+                return .array(document.arrayRepresentation.map { $0.makeNode() })
             } else {
                 let object = document.map({ [$0.0: $0.1.makeNode()] as [String: Node] }).reduce([:]) { lhs, rhs in
                     var lhs = lhs
