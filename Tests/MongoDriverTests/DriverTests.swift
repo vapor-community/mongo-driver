@@ -7,12 +7,13 @@ class DriverTests: XCTestCase {
     static var allTests : [(String, (DriverTests) -> () throws -> Void)] {
         return [
             ("testInsertAndFind", testInsertAndFind),
+            ("testArray", testArray),
             ("testPivotsAndRelations", testPivotsAndRelations),
             ("testSchema", testSchema),
             ("testPaginate", testPaginate),
             ("testTimestamps", testTimestamps),
             ("testSoftDelete", testSoftDelete),
-            ("testIndex", testIndex),
+            ("testIndex", testIndex)
         ]
     }
     
@@ -23,6 +24,34 @@ class DriverTests: XCTestCase {
         let db = Fluent.Database(driver)
         let tester = Tester(database: db)
         try tester.testInsertAndFind()
+    }
+    
+    // This test is for Mongo specific functionality.
+    // It tests the ability to embed an array of documents in a document.
+    func testArray() throws {
+        try driver.drop()
+        let db = Fluent.Database(driver)
+        
+        RecordStore.database = db
+        
+        let recordStore = RecordStore(
+            vinyls: [
+                Vinyl(name: "Thriller", year: 1982),
+                Vinyl(name: "Back in Black", year: 1980),
+                Vinyl(name: "The Dark Side of the Moon", year: 1973)
+            ]
+        )
+
+        try recordStore.save()
+        
+        guard
+            let foundStore = try RecordStore.makeQuery().all().first else {
+                XCTFail()
+                return
+        }
+        
+        XCTAssert(foundStore.vinyls.count == 3)
+        XCTAssert(foundStore.vinyls.filter({ return $0.name == "Thriller" }).count == 1)
     }
     
     func testPivotsAndRelations() throws {
