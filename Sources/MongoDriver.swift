@@ -175,7 +175,13 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 throw Error.invalidData
             }
             
-            document[key] = value
+            // Arrays need to be converted to documents first
+            if let arrayValue = value.array {
+                document[key] = Document(array: arrayValue)
+            } else {
+                document[key] = value
+            }
+            
         }
         
         if let key = document.type(at: "_id"), case ElementType.nullValue = key {
