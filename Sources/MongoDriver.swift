@@ -255,7 +255,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         case .modify:
             return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
         case .delete:
-            return try collection.remove(filter, limitedTo: limit ?? 1).makeNode()
+            return try collection.remove(filter, limitedTo: limit ?? 0).makeNode()
         case .schema(let schema):
             switch schema {
             case .createIndex(_):
