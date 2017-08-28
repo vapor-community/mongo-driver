@@ -114,9 +114,13 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 } else {
                     subQuery = try makeQuery(filters, method: .or)
                 }
-            case .subset(_, _, _):
-                // TODO:
-                throw Error.unsupported
+            case .subset(let key, let scope, let values):
+                switch scope {
+                case .in:
+                    subQuery = MKQuery(aqt: AQT.in(key: key, in: values))
+                case .notIn:
+                    subQuery = MKQuery(aqt: AQT.not(AQT.in(key: key, in: values)))
+                }
             }
             
             if query.makeDocument().count == 0  {
