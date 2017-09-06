@@ -28,6 +28,12 @@ mongod
 
 ## Connecting to MongoDB with Fluent
 
+You need to edit `Config/fluent.json` to define mongo as the underlying database technology to use as driver for Fluent:
+
+```
+"driver": "mongo"
+```
+
 Creating a driver is done using the [MongoDB Connection String URI Format](https://docs.mongodb.com/manual/reference/connection-string/). Initializing a `MongoDriver` such a URI will attempt a connection to MongoDB.
 
 ```
