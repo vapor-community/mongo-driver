@@ -30,7 +30,7 @@ mongod
 
 You need to edit `Config/fluent.json` to define mongo as the underlying database technology to use as driver for Fluent:
 
-```
+```json
 { 
     "driver": "mongo" 
 }
@@ -38,7 +38,7 @@ You need to edit `Config/fluent.json` to define mongo as the underlying database
 
 Creating a driver is done using the [MongoDB Connection String URI Format](https://docs.mongodb.com/manual/reference/connection-string/). Initializing a `MongoDriver` such a URI will attempt a connection to MongoDB.
 
-```
+```swift
 import MongoDriver
 import Fluent
 
