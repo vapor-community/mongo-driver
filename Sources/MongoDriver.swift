@@ -200,7 +200,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
         
         let collection = self[E.entity]
-        let filter = try makeQuery(query.filters, method: .and)
+        var filter = try makeQuery(query.filters, method: .and)
         let document = try makeDocument(query.data)
         let sort = makeSort(query.sorts)
         let (limit, skip) = try makeLimits(query.limits)
@@ -235,11 +235,25 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             case .count:
                 // Counting is not necessarily an aggregation operation in MongoDB
                 if let field = field {
-                    let filter = filter && Query(aqt: .exists(key: field, exists: true))
-                    return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
-                } else {
-                    return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+                    filter &= Query(aqt: .exists(key: field, exists: true))
                 }
+                
+                // TODO: Support ComputedProperties
+                if let lookup = query.joins.first?.wrapped {
+                    let results = try self[lookup.joined.entity].aggregate([
+                        .match(filter),
+                        .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
+                        .project(["_id"]),
+                        .unwind("$_id"),
+                        .count(insertedAtKey: "count")
+                    ])
+                    
+                    return Array(results.flatMap({ input in
+                        return Int(input["count"])
+                    })).first?.makeNode() ?? 0
+                }
+                
+                return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
             case .sum:
                 throw Error.unsupported
             case .average:
