@@ -54,6 +54,44 @@ class DriverTests: XCTestCase {
         XCTAssert(foundStore.vinyls.count == 3)
         XCTAssert(foundStore.vinyls.filter({ return $0.name == "Thriller" }).count == 1)
     }
+
+    func testSiblingsCount() throws {
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Pet.database = db
+        Toy.database = db
+        Pivot<Pet, Toy>.database = db
+
+        let molly = Pet(name: "Molly")
+        let rex = Pet(name: "Rex")
+
+        try molly.save()
+        try rex.save()
+
+        let ball = Toy(name: "ball")
+        let bone = Toy(name: "bone")
+        let puppet = Toy(name: "puppet")
+
+        try ball.save()
+        try bone.save()
+        try puppet.save()
+
+        try molly.toys.add(ball)
+        try molly.toys.add(puppet)
+
+        try rex.toys.add(bone)
+
+        XCTAssertEqual(try molly.toys.all().count, 2)
+        XCTAssertEqual(try molly.toys.count(), 2)
+        XCTAssertEqual(try rex.toys.all().count, 1)
+        XCTAssertEqual(try rex.toys.count(), 1)
+
+        try puppet.pets.add(rex)
+
+        XCTAssertEqual(try rex.toys.all().count, 2)
+        XCTAssertEqual(try rex.toys.count(), 2)
+    }
     
     func testPivotsAndRelations() throws {
         try driver.drop()
