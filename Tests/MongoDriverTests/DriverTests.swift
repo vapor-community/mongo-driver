@@ -8,6 +8,7 @@ class DriverTests: XCTestCase {
         return [
             ("testInsertAndFind", testInsertAndFind),
             ("testArray", testArray),
+            ("testSiblingsCount", testSiblingsCount),
             ("testPivotsAndRelations", testPivotsAndRelations),
             ("testSchema", testSchema),
             ("testPaginate", testPaginate),
