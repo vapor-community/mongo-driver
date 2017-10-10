@@ -266,7 +266,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
                 let pipeline: AggregationPipeline = [
                     .match(filter),
-                    .group(UUID().uuidString, computed: ["min": .minOf("$" + field)])
+                    .group("null", computed: ["min": .minOf("$" + field)])
                 ]
 
                 // TODO: Apply the same lookup logic that is in max
@@ -296,7 +296,8 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                     pipeline.append(.unwind("$_id"))
                 }
 
-                pipeline.append(.group(UUID().uuidString, computed: ["max": .maxOf("$" + field)]))
+                // Fluent always aggregate on a single field
+                pipeline.append(.group("null", computed: ["max": .maxOf("$" + field)]))
 
                 let cursor = try effectiveCollection.aggregate(pipeline)
 
