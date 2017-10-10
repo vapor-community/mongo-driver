@@ -88,6 +88,9 @@ class DriverTests: XCTestCase {
         try rex.toys.add(bone)
 
         XCTAssertEqual(try molly.toys.all().count, 2)
+        XCTAssertEqual(try Toy.makeQuery().filter("name", .hasPrefix, "b").all().count, 2)
+        XCTAssertEqual(try molly.toys.makeQuery().filter("name", .hasPrefix, "b").all().count, 1)
+        XCTAssertEqual(try molly.toys.makeQuery().filter("name", .hasPrefix, "b").count(), 1)
         XCTAssertEqual(try molly.toys.count(), 2)
         XCTAssertEqual(try rex.toys.all().count, 1)
         XCTAssertEqual(try rex.toys.count(), 1)
