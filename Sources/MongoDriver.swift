@@ -269,6 +269,8 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                     .group(UUID().uuidString, computed: ["min": .minOf("$" + field)])
                 ]
 
+                // TODO: Apply the same lookup logic that is in max
+
                 let cursor = try collection.aggregate(pipeline)
 
                 return Array(cursor.flatMap({ input in
@@ -281,12 +283,22 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                     throw Error.invalidQuery
                 }
 
-                let pipeline: AggregationPipeline = [
-                    .match(filter),
-                    .group(UUID().uuidString, computed: ["max": .maxOf("$" + field)])
-                ]
+                var pipeline: AggregationPipeline = [.match(filter)]
 
-                let cursor = try collection.aggregate(pipeline)
+                var effectiveCollection = collection
+
+                if let lookup = query.joins.first?.wrapped {
+
+                    effectiveCollection = self[lookup.joined.entity]
+
+                    pipeline.append(.lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"))
+                    pipeline.append(.project(["_id"]))
+                    pipeline.append(.unwind("$_id"))
+                }
+
+                pipeline.append(.group(UUID().uuidString, computed: ["max": .maxOf("$" + field)]))
+
+                let cursor = try effectiveCollection.aggregate(pipeline)
 
                 return Array(cursor.flatMap({ input in
                     return Int(input["max"])

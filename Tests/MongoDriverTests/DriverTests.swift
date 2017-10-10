@@ -118,6 +118,7 @@ class DriverTests: XCTestCase {
 
         XCTAssertEqual(try Pet.makeQuery().aggregate("age", .max), 6)
         XCTAssertEqual(try Pet.makeQuery().filter("age", .lessThan, 5).aggregate("age", .max), 2)
+        XCTAssertEqual(try Pet.makeQuery().filter("name", .hasPrefix, "R").aggregate("age", .max), 1)
     }
 
     func testSiblingsMax() throws {
@@ -170,6 +171,7 @@ class DriverTests: XCTestCase {
 
         XCTAssertEqual(try Pet.makeQuery().aggregate("age", .min), 1)
         XCTAssertEqual(try Pet.makeQuery().filter("age", .greaterThan, 1).aggregate("age", .min), 2)
+        XCTAssertEqual(try Pet.makeQuery().filter("name", .hasPrefix, "B").aggregate("age", .min), 6)
     }
 
     func testSiblingsMin() throws {
