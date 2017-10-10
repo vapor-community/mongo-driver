@@ -259,9 +259,39 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             case .average:
                 throw Error.unsupported
             case .min:
-                throw Error.unsupported
+
+                guard let field = field else {
+                    throw Error.invalidQuery
+                }
+
+                let pipeline: AggregationPipeline = [
+                    .match(filter),
+                    .group(UUID().uuidString, computed: ["min": .minOf("$" + field)])
+                ]
+
+                let cursor = try collection.aggregate(pipeline)
+
+                return Array(cursor.flatMap({ input in
+                    return Int(input["min"])
+                })).first?.makeNode() ?? 0
+
             case .max:
-                throw Error.unsupported
+
+                guard let field = field else {
+                    throw Error.invalidQuery
+                }
+
+                let pipeline: AggregationPipeline = [
+                    .match(filter),
+                    .group(UUID().uuidString, computed: ["max": .maxOf("$" + field)])
+                ]
+
+                let cursor = try collection.aggregate(pipeline)
+
+                return Array(cursor.flatMap({ input in
+                    return Int(input["max"])
+                })).first?.makeNode() ?? 0
+
             case .custom(_):
                 // TODO: Implement
                 throw Error.unsupported
