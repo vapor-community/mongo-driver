@@ -258,26 +258,8 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 throw Error.unsupported
             case .average:
                 throw Error.unsupported
-            case .min:
 
-                guard let field = field else {
-                    throw Error.invalidQuery
-                }
-
-                let pipeline: AggregationPipeline = [
-                    .match(filter),
-                    .group("null", computed: ["min": .minOf("$" + field)])
-                ]
-
-                // TODO: Apply the same lookup logic that is in max
-
-                let cursor = try collection.aggregate(pipeline)
-
-                return Array(cursor.flatMap({ input in
-                    return Int(input["min"])
-                })).first?.makeNode() ?? 0
-
-            case .max:
+            case .min, .max:
 
                 guard let field = field else {
                     throw Error.invalidQuery
@@ -290,19 +272,25 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 if let lookup = query.joins.first?.wrapped {
 
                     effectiveCollection = self[lookup.joined.entity]
-
-                    pipeline.append(.lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"))
-                    pipeline.append(.project(["_id"]))
-                    pipeline.append(.unwind("$_id"))
+                    pipeline.append(.lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: lookup.base.name))
+                    pipeline.append(.project(Projection(["_id": false]) + Projection([field: "$" + lookup.base.name + "." + field])))
+                    pipeline.append(.unwind("$" + field))
                 }
 
                 // Fluent always aggregate on a single field
-                pipeline.append(.group("null", computed: ["max": .maxOf("$" + field)]))
+                switch aggregate {
+                case .min:
+                    pipeline.append(.group("null", computed: ["aggregated_value": .minOf("$" + field)]))
+                case .max:
+                    pipeline.append(.group("null", computed: ["aggregated_value": .maxOf("$" + field)]))
+                default:
+                    break
+                }
 
                 let cursor = try effectiveCollection.aggregate(pipeline)
 
                 return Array(cursor.flatMap({ input in
-                    return Int(input["max"])
+                    return Int(input["aggregated_value"])
                 })).first?.makeNode() ?? 0
 
             case .custom(_):
