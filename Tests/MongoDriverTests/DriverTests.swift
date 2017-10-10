@@ -9,6 +9,10 @@ class DriverTests: XCTestCase {
             ("testInsertAndFind", testInsertAndFind),
             ("testArray", testArray),
             ("testSiblingsCount", testSiblingsCount),
+            ("testMax", testMax),
+            ("testSiblingsMax", testSiblingsMax),
+            ("testMin", testMin),
+            ("testSiblingsMin", testSiblingsMin),
             ("testPivotsAndRelations", testPivotsAndRelations),
             ("testSchema", testSchema),
             ("testPaginate", testPaginate),
@@ -64,8 +68,8 @@ class DriverTests: XCTestCase {
         Toy.database = db
         Pivot<Pet, Toy>.database = db
 
-        let molly = Pet(name: "Molly")
-        let rex = Pet(name: "Rex")
+        let molly = Pet(name: "Molly", age: 2)
+        let rex = Pet(name: "Rex", age: 1)
 
         try molly.save()
         try rex.save()
@@ -92,6 +96,106 @@ class DriverTests: XCTestCase {
 
         XCTAssertEqual(try rex.toys.all().count, 2)
         XCTAssertEqual(try rex.toys.count(), 2)
+    }
+
+    func testMax() throws {
+
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Pet.database = db
+
+        let molly = Pet(name: "Molly", age: 2)
+        let rex = Pet(name: "Rex", age: 1)
+        let buddy = Pet(name: "Buddy", age: 6)
+
+        try molly.save()
+        try rex.save()
+        try buddy.save()
+
+        XCTAssertEqual(try Pet.makeQuery().aggregate("age", .max), 6)
+    }
+
+    func testSiblingsMax() throws {
+
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Pet.database = db
+        Toy.database = db
+        Pivot<Pet, Toy>.database = db
+
+        let molly = Pet(name: "Molly", age: 2)
+        let rex = Pet(name: "Rex", age: 1)
+
+        try molly.save()
+        try rex.save()
+
+        let ball = Toy(name: "ball")
+        let bone = Toy(name: "bone")
+        let puppet = Toy(name: "puppet")
+
+        try ball.save()
+        try bone.save()
+        try puppet.save()
+
+        try molly.toys.add(ball)
+        try molly.toys.add(bone)
+        try molly.toys.add(puppet)
+
+        try rex.toys.add(bone)
+
+        XCTAssertEqual(try bone.pets.makeQuery().aggregate("age", .max), 2)
+    }
+
+    func testMin() throws {
+
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Pet.database = db
+
+        let molly = Pet(name: "Molly", age: 2)
+        let rex = Pet(name: "Rex", age: 1)
+        let buddy = Pet(name: "Buddy", age: 6)
+
+        try molly.save()
+        try rex.save()
+        try buddy.save()
+
+        XCTAssertEqual(try Pet.makeQuery().aggregate("age", .max), 1)
+    }
+
+    func testSiblingsMin() throws {
+
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Pet.database = db
+        Toy.database = db
+        Pivot<Pet, Toy>.database = db
+
+        let molly = Pet(name: "Molly", age: 2)
+        let rex = Pet(name: "Rex", age: 1)
+
+        try molly.save()
+        try rex.save()
+
+        let ball = Toy(name: "ball")
+        let bone = Toy(name: "bone")
+        let puppet = Toy(name: "puppet")
+
+        try ball.save()
+        try bone.save()
+        try puppet.save()
+
+        try molly.toys.add(ball)
+        try molly.toys.add(bone)
+        try molly.toys.add(puppet)
+
+        try rex.toys.add(bone)
+
+        XCTAssertEqual(try bone.pets.makeQuery().aggregate("age", .max), 1)
     }
     
     func testPivotsAndRelations() throws {
