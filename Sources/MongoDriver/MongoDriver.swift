@@ -67,77 +67,97 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
     /// Creates a MongoKitten Query from an array of Fluent.Filter
     ///
     /// TODO: Support all MongoDB operations
-    private func makeQuery(_ filters: [RawOr<Filter>], method: Method) throws -> MKQuery {
+    private func makeQuery<E>(_ fluentQuery: Fluent.Query<E>, method: Method) throws -> (query: MKQuery, lookupMap: [String: UUID]) {
 
         var query = MKQuery()
-        
-        for filter in filters {
-            guard let filter = filter.wrapped else {
-                throw Error.unsupported
-            }
-            
-            let subQuery: MKQuery
 
-            switch filter.method {
-            case .compare(let key, let comparison, let value):
-                guard let value = value.makePrimitive() else {
+        var lookupMap: [String: UUID] = [E.name: UUID()]
+
+        func makeQuery(_ filters: [RawOr<Filter>], method: Method) throws -> MKQuery {
+
+            for filter in filters {
+                guard let filter = filter.wrapped else {
                     throw Error.unsupported
                 }
-                
-                switch (comparison, value) {
-                case (.equals, _):
-                    subQuery = key == value
-                case (.greaterThan, _):
-                    subQuery = key > value
-                case (.greaterThanOrEquals, _):
-                    subQuery = key >= value
-                case (.lessThan, _):
-                    subQuery = key < value
-                case (.lessThanOrEquals, _):
-                    subQuery = key <= value
-                case (.notEquals, _):
-                    subQuery = key != value
-                case (.contains, let value as String):
-                    subQuery = MKQuery(aqt: AQT.contains(key: key, val: value, options: []))
-                case (.hasSuffix, let value as String):
-                    subQuery = MKQuery(aqt: AQT.endsWith(key: key, val: value))
-                case (.hasPrefix, let value as String):
-                    subQuery = MKQuery(aqt: AQT.startsWith(key: key, val: value))
-                case (.custom(_), _):
-                    // TODO:
-                    throw Error.unsupported
-                default:
-                    throw Error.unsupported
+
+                func eval(_ key: String) -> String {
+
+                    let uuid = lookupMap[filter.entity.name] ?? UUID()
+                    lookupMap[filter.entity.name] = uuid
+
+                    return uuid.uuidString + "." + key
                 }
-            case .group(let relation, let filters):
-                switch relation {
-                case .and:
-                    subQuery = try makeQuery(filters, method: .and)
-                case .or:
-                    subQuery = try makeQuery(filters, method: .or)
+
+                let subQuery: MKQuery
+
+                switch filter.method {
+                case .compare(var key, let comparison, let value):
+                    guard let value = value.makePrimitive() else {
+                        throw Error.unsupported
+                    }
+
+                    key = eval(key)
+
+                    switch (comparison, value) {
+                    case (.equals, _):
+                        subQuery = key == value
+                    case (.greaterThan, _):
+                        subQuery = key > value
+                    case (.greaterThanOrEquals, _):
+                        subQuery = key >= value
+                    case (.lessThan, _):
+                        subQuery = key < value
+                    case (.lessThanOrEquals, _):
+                        subQuery = key <= value
+                    case (.notEquals, _):
+                        subQuery = key != value
+                    case (.contains, let value as String):
+                        subQuery = MKQuery(aqt: AQT.contains(key: key, val: value, options: []))
+                    case (.hasSuffix, let value as String):
+                        subQuery = MKQuery(aqt: AQT.endsWith(key: key, val: value))
+                    case (.hasPrefix, let value as String):
+                        subQuery = MKQuery(aqt: AQT.startsWith(key: key, val: value))
+                    case (.custom(_), _):
+                        // TODO:
+                        throw Error.unsupported
+                    default:
+                        throw Error.unsupported
+                    }
+                case .group(let relation, let filters):
+                    switch relation {
+                    case .and:
+                        subQuery = try makeQuery(filters, method: .and)
+                    case .or:
+                        subQuery = try makeQuery(filters, method: .or)
+                    }
+                case .subset(var key, let scope, let values):
+
+                    key = eval(key)
+
+                    switch scope {
+                    case .in:
+                        subQuery = MKQuery(aqt: AQT.in(key: key, in: values))
+                    case .notIn:
+                        subQuery = MKQuery(aqt: AQT.not(AQT.in(key: key, in: values)))
+                    }
                 }
-            case .subset(let key, let scope, let values):
-                switch scope {
-                case .in:
-                    subQuery = MKQuery(aqt: AQT.in(key: key, in: values))
-                case .notIn:
-                    subQuery = MKQuery(aqt: AQT.not(AQT.in(key: key, in: values)))
+
+                if query.makeDocument().count == 0  {
+                    query = subQuery
+                } else {
+                    switch method {
+                    case .and:
+                        query = query && subQuery
+                    case .or:
+                        query = query || subQuery
+                    }
                 }
             }
 
-            if query.makeDocument().count == 0  {
-                query = subQuery
-            } else {
-                switch method {
-                case .and:
-                    query = query && subQuery
-                case .or:
-                    query = query || subQuery
-                }
-            }
+            return query
         }
-        
-        return query
+
+        return (query: try makeQuery(fluentQuery.filters, method: method), lookupMap: lookupMap)
     }
     
     /// Transforms Fluent.Sort into MongoKitten.Sort so that it can be passed to MongoKitten
@@ -247,24 +267,48 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try makeQuery(query.filters, method: .and)
+        let (filter, lookupMap) = try makeQuery(query, method: .and)
         let sort = makeSort(query.sorts)
         let (limit, skip) = try makeLimits(query.limits)
 
-        if let lookup = query.joins.first?.wrapped {
-            let results = try self[lookup.joined.entity].aggregate([
-                .match(filter),
-                .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
-                .project(["_id"]),
-                .unwind("$_id"),
-                ])
-
-            return Array(results.flatMap({ input in
-                return Document(input["_id"])
-            })).makeNode()
+        guard let baseEntityUUID = lookupMap[E.name]?.uuidString else {
+            throw Error.invalidQuery
         }
 
-        return Array(try collection.find(filter, sortedBy: sort, skipping: skip, limitedTo: limit)).makeNode()
+        var pipeline: AggregationPipeline = [
+            .project([baseEntityUUID: "$$ROOT"]),
+            .addFields(["_id": "$" + baseEntityUUID + "._id"])
+        ]
+
+        for join in query.joins {
+
+            guard let lookup = join.wrapped, let uuid = lookupMap[lookup.joined.entity]?.uuidString else {
+                continue
+            }
+
+            pipeline.append(.lookup(from: self[lookup.joined.entity], localField: lookup.baseKey, foreignField: lookup.joinedKey, as: uuid))
+            pipeline.append(.unwind("$" + uuid))
+        }
+
+        pipeline.append(.match(filter))
+
+        if let sort = sort {
+            pipeline.append(.sort(sort))
+        }
+
+        if let limit = limit {
+            pipeline.append(.limit(limit))
+        }
+
+        if let skip = skip {
+            pipeline.append(.skip(skip))
+        }
+
+        let cursor = try collection.aggregate(pipeline)
+
+        return Array(cursor.flatMap({ input in
+            return Document(input[baseEntityUUID])
+        })).makeNode()
     }
 
     private func aggregate<E>(_ query: Fluent.Query<E>) throws -> Node {
@@ -283,7 +327,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
         let collection = self[E.entity]
         var effectiveCollection = collection
-        let filter = try self.makeQuery(query.filters, method: .and)
+        let (filter, lookupMap) = try self.makeQuery(query, method: .and)
         var pipeline: AggregationPipeline = [.match(filter)]
 
         if let lookup = query.joins.first?.wrapped {
@@ -321,7 +365,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        var filter = try makeQuery(query.filters, method: .and)
+        var (filter, lookupMap) = try makeQuery(query, method: .and)
         let (limit, skip) = try makeLimits(query.limits)
 
         // Counting is not necessarily an aggregation operation in MongoDB
@@ -354,7 +398,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try self.makeQuery(query.filters, method: .and)
+        let (filter, lookupMap) = try self.makeQuery(query, method: .and)
         let document = try makeDocument(query.data)
 
         return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
@@ -367,7 +411,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try self.makeQuery(query.filters, method: .and)
+        let (filter, lookupMap) = try self.makeQuery(query, method: .and)
         let limit = try makeLimits(query.limits).limit ?? 0
 
         return try collection.remove(filter, limitedTo: limit).makeNode()
