@@ -68,7 +68,6 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
     ///
     /// TODO: Support all MongoDB operations
     private func makeQuery(_ filters: [RawOr<Filter>], method: Method) throws -> MKQuery {
-
         var query = MKQuery()
 
         for filter in filters {
@@ -140,7 +139,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             } else {
                 switch method {
                 case .and:
-                    query = query && subQuery
+                    query &= subQuery
                 case .or:
                     query = query || subQuery
                 }
