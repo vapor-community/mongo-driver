@@ -68,6 +68,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
     ///
     /// TODO: Support all MongoDB operations
     private func makeQuery(_ filters: [RawOr<Filter>], method: Method) throws -> MKQuery {
+
         var query = MKQuery()
         
         for filter in filters {
@@ -76,7 +77,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             }
             
             let subQuery: MKQuery
-            
+
             switch filter.method {
             case .compare(let key, let comparison, let value):
                 guard let value = value.makePrimitive() else {
@@ -109,9 +110,10 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                     throw Error.unsupported
                 }
             case .group(let relation, let filters):
-                if relation == .and {
+                switch relation {
+                case .and:
                     subQuery = try makeQuery(filters, method: .and)
-                } else {
+                case .or:
                     subQuery = try makeQuery(filters, method: .or)
                 }
             case .subset(let key, let scope, let values):
@@ -122,13 +124,16 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                     subQuery = MKQuery(aqt: AQT.not(AQT.in(key: key, in: values)))
                 }
             }
-            
+
             if query.makeDocument().count == 0  {
                 query = subQuery
-            } else if method == .and {
-                query = query && subQuery
             } else {
-                query = query || subQuery
+                switch method {
+                case .and:
+                    query = query && subQuery
+                case .or:
+                    query = query || subQuery
+                }
             }
         }
         
@@ -203,9 +208,9 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         switch query.action {
         case .create:
             return try self.create(query)
-        case .fetch(let computedProperties):
+        case .fetch:
             return try self.fetch(query)
-        case .aggregate(let field, let action):
+        case .aggregate:
             return try self.aggregate(query)
         case .modify:
             return try self.modify(query)
