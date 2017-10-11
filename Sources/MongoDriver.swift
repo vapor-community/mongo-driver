@@ -195,133 +195,201 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
     ///
     ///
     public func query<E>(_ query: RawOr<Fluent.Query<E>>) throws -> Node where E : Entity {
+
         guard let query = query.wrapped else {
             throw Error.invalidQuery
         }
-        
-        let collection = self[E.entity]
-        var filter = try makeQuery(query.filters, method: .and)
-        let document = try makeDocument(query.data)
-        let sort = makeSort(query.sorts)
-        let (limit, skip) = try makeLimits(query.limits)
-        
+
         switch query.action {
         case .create:
-            return try collection.insert(document).makeNode()
+            return try self.create(query)
         case .fetch(let computedProperties):
-            guard computedProperties.count == 0 else {
-                throw Error.unsupported
-            }
-            
-            // TODO: Support ComputedProperties
-            if let lookup = query.joins.first?.wrapped {
-                let results = try self[lookup.joined.entity].aggregate([
-                    .match(filter),
-                    .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
-                    .project(["_id"]),
-                    .unwind("$_id"),
-                ])
-                
-                return Array(results.flatMap({ input in
-                    return Document(input["_id"])
-                })).makeNode()
-            }
-            
-            return Array(try collection.find(filter, sortedBy: sort, skipping: skip, limitedTo: limit)).makeNode()
-        // Aggregates aren't like an Aggregation Pipeline
-        // They're like a query on all occurences of a field
-        case .aggregate(let field, let aggregate):
-            switch aggregate {
-            case .count:
-                // Counting is not necessarily an aggregation operation in MongoDB
-                if let field = field {
-                    filter &= Query(aqt: .exists(key: field, exists: true))
-                }
-                
-                // TODO: Support ComputedProperties
-                if let lookup = query.joins.first?.wrapped {
-                    let results = try self[lookup.joined.entity].aggregate([
-                        .match(filter),
-                        .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
-                        .project(["_id"]),
-                        .unwind("$_id"),
-                        .count(insertedAtKey: "count")
-                    ])
-                    
-                    return Array(results.flatMap({ input in
-                        return Int(input["count"])
-                    })).first?.makeNode() ?? 0
-                }
-                
-                return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
-            case .sum:
-                throw Error.unsupported
-            case .average:
-                throw Error.unsupported
-
-            case .min, .max:
-
-                guard let field = field else {
-                    throw Error.invalidQuery
-                }
-
-                var pipeline: AggregationPipeline = [.match(filter)]
-
-                var effectiveCollection = collection
-
-                if let lookup = query.joins.first?.wrapped {
-
-                    effectiveCollection = self[lookup.joined.entity]
-                    pipeline.append(.lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: lookup.base.name))
-                    pipeline.append(.project(Projection(["_id": false]) + Projection([field: "$" + lookup.base.name + "." + field])))
-                    pipeline.append(.unwind("$" + field))
-                }
-
-                // Fluent always aggregate on a single field
-                switch aggregate {
-                case .min:
-                    pipeline.append(.group("null", computed: ["aggregated_value": .minOf("$" + field)]))
-                case .max:
-                    pipeline.append(.group("null", computed: ["aggregated_value": .maxOf("$" + field)]))
-                default:
-                    break
-                }
-
-                let cursor = try effectiveCollection.aggregate(pipeline)
-
-                return Array(cursor.flatMap({ input in
-                    return Int(input["aggregated_value"])
-                })).first?.makeNode() ?? 0
-
-            case .custom(_):
-                // TODO: Implement
-                throw Error.unsupported
-            }
+            return try self.fetch(query)
+        case .aggregate(let field, let action):
+            return try self.aggregate(query)
         case .modify:
-            return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
+            return try self.modify(query)
         case .delete:
-            return try collection.remove(filter, limitedTo: limit ?? 0).makeNode()
-        case .schema(let schema):
-            switch schema {
-            case .createIndex(_):
-                print("Please create indexes this through MongoKitten")
-                
-                return false
-            case .deleteIndex(_):
-                print("Please delete indexes this through MongoKitten")
-                
-                return false
-            case .create(_, _):
-                // Schema's are managed by Fluent. MongoDB doesn't require a schema. No need to support this, for now.
-                return true
-            case .modify(_, _, _, _):
-                // Same here. Schema's are managed by Fluent. MongoDB doesn't require a schema.
-                return true
-            case .delete:
-                try collection.drop()
-                
-                return true
-            }
+            return try self.delete(query)
+        case .schema:
+            return try self.schema(query)
+        }
+    }
+
+    // MARK: Actions
+
+    private func create<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard query.action == .create else {
+            throw Error.invalidQuery
+        }
+
+        let collection = self[E.entity]
+        let document = try makeDocument(query.data)
+
+        return try collection.insert(document).makeNode()
+    }
+
+    private func fetch<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard case .fetch(let computedProperties) = query.action else {
+            throw Error.invalidQuery
+        }
+
+        // TODO: Support ComputedProperties
+        guard computedProperties.isEmpty else {
+            throw Error.unsupported
+        }
+
+        let collection = self[E.entity]
+        let filter = try makeQuery(query.filters, method: .and)
+        let sort = makeSort(query.sorts)
+        let (limit, skip) = try makeLimits(query.limits)
+
+        if let lookup = query.joins.first?.wrapped {
+            let results = try self[lookup.joined.entity].aggregate([
+                .match(filter),
+                .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
+                .project(["_id"]),
+                .unwind("$_id"),
+                ])
+
+            return Array(results.flatMap({ input in
+                return Document(input["_id"])
+            })).makeNode()
+        }
+
+        return Array(try collection.find(filter, sortedBy: sort, skipping: skip, limitedTo: limit)).makeNode()
+    }
+
+    private func aggregate<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard case .aggregate(let field, let action) = query.action else {
+            throw Error.invalidQuery
+        }
+
+        guard action != .count else {
+            return try self.count(query)
+        }
+
+        guard let someField = field else {
+            throw Error.invalidQuery
+        }
+
+        let collection = self[E.entity]
+        var effectiveCollection = collection
+        let filter = try self.makeQuery(query.filters, method: .and)
+        var pipeline: AggregationPipeline = [.match(filter)]
+
+        if let lookup = query.joins.first?.wrapped {
+
+            effectiveCollection = self[lookup.joined.entity]
+            pipeline.append(.lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: lookup.base.name))
+            pipeline.append(.project(Projection(["_id": false]) + Projection([someField: "$" + lookup.base.name + "." + someField])))
+            pipeline.append(.unwind("$" + someField))
+        }
+
+        switch action {
+        case .average:
+            pipeline.append(.group("null", computed: ["aggregated_value": .averageOf("$" + someField)]))
+        case .sum:
+            pipeline.append(.group("null", computed: ["aggregated_value": .sumOf("$" + someField)]))
+        case .min:
+            pipeline.append(.group("null", computed: ["aggregated_value": .minOf("$" + someField)]))
+        case .max:
+            pipeline.append(.group("null", computed: ["aggregated_value": .maxOf("$" + someField)]))
+        default:
+            throw Error.unsupported
+        }
+
+        let cursor = try effectiveCollection.aggregate(pipeline)
+
+        return Array(cursor.flatMap({ input in
+            return Int(input["aggregated_value"])
+        })).first?.makeNode() ?? 0
+    }
+
+    private func count<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard case .aggregate(let field, .count) = query.action else {
+            throw Error.invalidQuery
+        }
+
+        let collection = self[E.entity]
+        var filter = try makeQuery(query.filters, method: .and)
+        let (limit, skip) = try makeLimits(query.limits)
+
+        // Counting is not necessarily an aggregation operation in MongoDB
+        if let field = field {
+            filter &= Query(aqt: .exists(key: field, exists: true))
+        }
+
+        // TODO: Support ComputedProperties
+        if let lookup = query.joins.first?.wrapped {
+            let results = try self[lookup.joined.entity].aggregate([
+                .match(filter),
+                .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
+                .project(["_id"]),
+                .unwind("$_id"),
+                .count(insertedAtKey: "count")
+                ])
+
+            return Array(results.flatMap({ input in
+                return Int(input["count"])
+            })).first?.makeNode() ?? 0
+        }
+
+        return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+    }
+
+    private func modify<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard query.action == .modify else {
+            throw Error.invalidQuery
+        }
+
+        let collection = self[E.entity]
+        let filter = try self.makeQuery(query.filters, method: .and)
+        let document = try makeDocument(query.data)
+
+        return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
+    }
+
+    private func delete<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard query.action == .delete else {
+            throw Error.invalidQuery
+        }
+
+        let collection = self[E.entity]
+        let filter = try self.makeQuery(query.filters, method: .and)
+        let limit = try makeLimits(query.limits).limit ?? 0
+
+        return try collection.remove(filter, limitedTo: limit).makeNode()
+    }
+
+    private func schema<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard case .schema(let schema) = query.action else {
+            throw Error.invalidQuery
+        }
+
+        switch schema {
+        case .createIndex:
+            print("Please create indexes for this through MongoKitten")
+
+            return false
+        case .deleteIndex:
+            print("Please delete indexes for this through MongoKitten")
+
+            return false
+        case .create, .modify:
+            // Schema's are managed by Fluent. MongoDB doesn't require a schema. No need to support this, for now.
+            return true
+        case .delete:
+            try self[E.entity].drop()
+
+            return true
         }
     }
 }
