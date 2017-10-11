@@ -199,7 +199,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
     /// Exequtes a Fluent.Query for an Entity
     ///
     ///
-    public func query<E>(_ query: RawOr<Fluent.Query<E>>) throws -> Node where E : Entity {
+    public func query<E>(_ query: RawOr<Fluent.Query<E>>) throws -> Node {
 
         guard let query = query.wrapped else {
             throw Error.invalidQuery
@@ -223,7 +223,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
     // MARK: Actions
 
-    private func create<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+    private func create<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard query.action == .create else {
             throw Error.invalidQuery
@@ -235,7 +235,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return try collection.insert(document).makeNode()
     }
 
-    private func fetch<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+    private func fetch<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard case .fetch(let computedProperties) = query.action else {
             throw Error.invalidQuery
@@ -267,7 +267,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return Array(try collection.find(filter, sortedBy: sort, skipping: skip, limitedTo: limit)).makeNode()
     }
 
-    private func aggregate<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+    private func aggregate<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard case .aggregate(let field, let action) = query.action else {
             throw Error.invalidQuery
@@ -314,7 +314,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         })).first?.makeNode() ?? 0
     }
 
-    private func count<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+    private func count<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard case .aggregate(let field, .count) = query.action else {
             throw Error.invalidQuery
@@ -347,7 +347,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
     }
 
-    private func modify<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+    private func modify<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard query.action == .modify else {
             throw Error.invalidQuery
@@ -360,7 +360,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
     }
 
-    private func delete<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+    private func delete<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard query.action == .delete else {
             throw Error.invalidQuery
@@ -373,7 +373,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return try collection.remove(filter, limitedTo: limit).makeNode()
     }
 
-    private func schema<E: Entity>(_ query: Fluent.Query<E>) throws -> Node {
+    private func schema<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard case .schema(let schema) = query.action else {
             throw Error.invalidQuery
