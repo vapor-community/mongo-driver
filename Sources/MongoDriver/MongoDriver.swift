@@ -247,7 +247,6 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
     private func makeAggregationPipeline<E>(_ query: Fluent.Query<E>) throws -> AggregationPipeline {
 
-        let collection = self[E.entity]
         let filter = try makeQuery(query.filters, method: .and)
         let sort = makeSort(query.sorts)
         let (limit, skip) = try makeLimits(query.limits)
@@ -347,35 +346,20 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
     private func count<E>(_ query: Fluent.Query<E>) throws -> Node {
 
-        guard case .aggregate(let field, .count) = query.action else {
+        guard case .aggregate(_, .count) = query.action else {
             throw Error.invalidQuery
         }
 
         let collection = self[E.entity]
-        var filter = try makeQuery(query.filters, method: .and)
-        let (limit, skip) = try makeLimits(query.limits)
+        var pipeline = try makeAggregationPipeline(query)
 
-        // Counting is not necessarily an aggregation operation in MongoDB
-        if let field = field {
-            filter &= Query(aqt: .exists(key: field, exists: true))
-        }
+        pipeline.append(.count(insertedAtKey: "count"))
 
-        // TODO: Support ComputedProperties
-        if let lookup = query.joins.first?.wrapped {
-            let results = try self[lookup.joined.entity].aggregate([
-                .match(filter),
-                .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
-                .project(["_id"]),
-                .unwind("$_id"),
-                .count(insertedAtKey: "count")
-                ])
+        let cursor = try collection.aggregate(pipeline)
 
-            return Array(results.flatMap({ input in
-                return Int(input["count"])
-            })).first?.makeNode() ?? 0
-        }
-
-        return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+        return Array(cursor.flatMap({ input in
+            return Int(input["count"])
+        })).first?.makeNode() ?? 0
     }
 
     private func modify<E>(_ query: Fluent.Query<E>) throws -> Node {
