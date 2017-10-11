@@ -12,8 +12,11 @@ final class Pet: Entity {
 
     public let name: String
 
-    public init(name: String) {
+    public let age: Int
+
+    public init(name: String, age: Int) {
         self.name = name
+        self.age = age
     }
 
     // MARK: Storable
@@ -24,7 +27,7 @@ final class Pet: Entity {
 
     public convenience init(row: Row) throws {
 
-        self.init(name: try row.get("name"))
+        self.init(name: try row.get("name"), age: try row.get("age"))
     }
 
     public func makeRow() throws -> Row {
@@ -33,6 +36,7 @@ final class Pet: Entity {
 
         try row.set(Pet.idKey, self.id)
         try row.set("name", self.name)
+        try row.set("age", self.age)
 
         return row
     }
