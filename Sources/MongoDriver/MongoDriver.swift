@@ -156,7 +156,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             $0.wrapped
         }.map { sort -> MKSort in
             let direction = sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending
-            return [sort.field: direction] as MKSort
+            return [sort.entity.name + "." + sort.field: direction] as MKSort
         }.reduce([:], +)
         
         if sortSpec.makeDocument().count > 0 {
@@ -274,12 +274,12 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             pipeline.append(.sort(sort))
         }
 
-        if let limit = limit {
-            pipeline.append(.limit(limit))
-        }
-
         if let skip = skip {
             pipeline.append(.skip(skip))
+        }
+
+        if let limit = limit {
+            pipeline.append(.limit(limit))
         }
 
         return pipeline
