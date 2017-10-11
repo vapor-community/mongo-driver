@@ -245,16 +245,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return try collection.insert(document).makeNode()
     }
 
-    private func fetch<E>(_ query: Fluent.Query<E>) throws -> Node {
-
-        guard case .fetch(let computedProperties) = query.action else {
-            throw Error.invalidQuery
-        }
-
-        // TODO: Support ComputedProperties
-        guard computedProperties.isEmpty else {
-            throw Error.unsupported
-        }
+    private func makeAggregationPipeline<E>(_ query: Fluent.Query<E>) throws -> AggregationPipeline {
 
         let collection = self[E.entity]
         let filter = try makeQuery(query.filters, method: .and)
@@ -272,7 +263,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 continue
             }
 
-            let collectionName = lookup.joined.entity
+            let collectionName = lookup.joined.name
 
             pipeline.append(.lookup(from: self[lookup.joined.entity], localField: lookup.baseKey, foreignField: lookup.joinedKey, as: collectionName))
             pipeline.append(.unwind("$" + collectionName))
@@ -291,6 +282,23 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         if let skip = skip {
             pipeline.append(.skip(skip))
         }
+
+        return pipeline
+    }
+
+    private func fetch<E>(_ query: Fluent.Query<E>) throws -> Node {
+
+        guard case .fetch(let computedProperties) = query.action else {
+            throw Error.invalidQuery
+        }
+
+        // TODO: Support ComputedProperties
+        guard computedProperties.isEmpty else {
+            throw Error.unsupported
+        }
+
+        let collection = self[E.entity]
+        let pipeline = try makeAggregationPipeline(query)
 
         let cursor = try collection.aggregate(pipeline)
 
@@ -314,32 +322,23 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        var effectiveCollection = collection
-        let filter = try self.makeQuery(query.filters, method: .and)
-        var pipeline: AggregationPipeline = [.match(filter)]
-
-        if let lookup = query.joins.first?.wrapped {
-
-            effectiveCollection = self[lookup.joined.entity]
-            pipeline.append(.lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: lookup.base.name))
-            pipeline.append(.project(Projection(["_id": false]) + Projection([someField: "$" + lookup.base.name + "." + someField])))
-            pipeline.append(.unwind("$" + someField))
-        }
+        let namespacedField = "$" + E.name + "." + someField
+        var pipeline = try makeAggregationPipeline(query)
 
         switch action {
         case .average:
-            pipeline.append(.group("null", computed: ["aggregated_value": .averageOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .averageOf(namespacedField)]))
         case .sum:
-            pipeline.append(.group("null", computed: ["aggregated_value": .sumOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .sumOf(namespacedField)]))
         case .min:
-            pipeline.append(.group("null", computed: ["aggregated_value": .minOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .minOf(namespacedField)]))
         case .max:
-            pipeline.append(.group("null", computed: ["aggregated_value": .maxOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .maxOf(namespacedField)]))
         default:
             throw Error.unsupported
         }
 
-        let cursor = try effectiveCollection.aggregate(pipeline)
+        let cursor = try collection.aggregate(pipeline)
 
         return Array(cursor.flatMap({ input in
             return Int(input["aggregated_value"])
