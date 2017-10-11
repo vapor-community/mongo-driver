@@ -13,6 +13,7 @@ class DriverTests: XCTestCase {
             ("testSiblingsMax", testSiblingsMax),
             ("testMin", testMin),
             ("testSiblingsMin", testSiblingsMin),
+            ("testSiblingsDeleteWithFilter", testSiblingsDeleteWithFilter),
             ("testPivotsAndRelations", testPivotsAndRelations),
             ("testSchema", testSchema),
             ("testPaginate", testPaginate),
@@ -205,6 +206,41 @@ class DriverTests: XCTestCase {
 
         XCTAssertEqual(try bone.pets.makeQuery().aggregate("age", .min), 1)
         XCTAssertEqual(try bone.pets.makeQuery().filter("age", .greaterThan, 1).aggregate("age", .min), 2)
+    }
+
+    func testSiblingsDeleteWithFilter() throws {
+
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Pet.database = db
+        Toy.database = db
+        Pivot<Pet, Toy>.database = db
+
+        let molly = Pet(name: "Molly", age: 2)
+        let rex = Pet(name: "Rex", age: 1)
+
+        try molly.save()
+        try rex.save()
+
+        let ball = Toy(name: "ball")
+        let bone = Toy(name: "bone")
+        let puppet = Toy(name: "puppet")
+
+        try ball.save()
+        try bone.save()
+        try puppet.save()
+
+        try molly.toys.add(ball)
+        try molly.toys.add(bone)
+        try molly.toys.add(puppet)
+
+        try rex.toys.add(bone)
+
+        XCTAssertNoThrow(try bone.pets.makeQuery().filter("age", .greaterThan, 1).delete())
+        XCTAssertEqual(try bone.pets.makeQuery().all().count, 1)
+        XCTAssertEqual(try bone.pets.makeQuery().count(), 1)
+        XCTAssertEqual(try bone.pets.makeQuery().all().first?.name, "Rex")
     }
     
     func testPivotsAndRelations() throws {

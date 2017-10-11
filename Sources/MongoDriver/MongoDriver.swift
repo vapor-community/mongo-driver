@@ -369,8 +369,13 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try self.makeQuery(query.filters, method: .and)
-        let document = try makeDocument(query.data)
+        let document = try self.makeDocument(query.data)
+        var pipeline = try self.makeAggregationPipeline(query)
+        pipeline.append(.project(["_id"]))
+
+        let cursor = try collection.aggregate(pipeline)
+
+        let filter = MKQuery(aqt: AQT.in(key: "_id", in: cursor.flatMap({ $0["_id"] })))
 
         return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
     }
@@ -382,10 +387,14 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try self.makeQuery(query.filters, method: .and)
-        let limit = try makeLimits(query.limits).limit ?? 0
+        var pipeline = try self.makeAggregationPipeline(query)
+        pipeline.append(.project(["_id"]))
 
-        return try collection.remove(filter, limitedTo: limit).makeNode()
+        let cursor = try collection.aggregate(pipeline)
+
+        let filter = MKQuery(aqt: AQT.in(key: "_id", in: cursor.flatMap({ $0["_id"] })))
+
+        return try collection.remove(filter, limitedTo: 0).makeNode()
     }
 
     private func schema<E>(_ query: Fluent.Query<E>) throws -> Node {
