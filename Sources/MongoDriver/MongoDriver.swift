@@ -70,20 +70,27 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
     private func makeQuery(_ filters: [RawOr<Filter>], method: Method) throws -> MKQuery {
 
         var query = MKQuery()
-        
+
         for filter in filters {
             guard let filter = filter.wrapped else {
                 throw Error.unsupported
             }
-            
+
+            func eval(_ key: String) -> String {
+
+                return filter.entity.name + "." + key
+            }
+
             let subQuery: MKQuery
 
             switch filter.method {
-            case .compare(let key, let comparison, let value):
+            case .compare(var key, let comparison, let value):
                 guard let value = value.makePrimitive() else {
                     throw Error.unsupported
                 }
-                
+
+                key = eval(key)
+
                 switch (comparison, value) {
                 case (.equals, _):
                     subQuery = key == value
@@ -112,11 +119,14 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             case .group(let relation, let filters):
                 switch relation {
                 case .and:
-                    subQuery = try makeQuery(filters, method: .and)
+                    subQuery = try self.makeQuery(filters, method: .and)
                 case .or:
-                    subQuery = try makeQuery(filters, method: .or)
+                    subQuery = try self.makeQuery(filters, method: .or)
                 }
-            case .subset(let key, let scope, let values):
+            case .subset(var key, let scope, let values):
+
+                key = eval(key)
+
                 switch scope {
                 case .in:
                     subQuery = MKQuery(aqt: AQT.in(key: key, in: values))
@@ -136,7 +146,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
                 }
             }
         }
-        
+
         return query
     }
     
@@ -146,7 +156,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             $0.wrapped
         }.map { sort -> MKSort in
             let direction = sort.direction == .ascending ? SortOrder.ascending : SortOrder.descending
-            return [sort.field: direction] as MKSort
+            return [sort.entity.name + "." + sort.field: direction] as MKSort
         }.reduce([:], +)
         
         if sortSpec.makeDocument().count > 0 {
@@ -235,6 +245,46 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         return try collection.insert(document).makeNode()
     }
 
+    private func makeAggregationPipeline<E>(_ query: Fluent.Query<E>) throws -> AggregationPipeline {
+
+        let filter = try makeQuery(query.filters, method: .and)
+        let sort = makeSort(query.sorts)
+        let (limit, skip) = try makeLimits(query.limits)
+
+        var pipeline: AggregationPipeline = [
+            .project([E.name: "$$ROOT"]),
+            .addFields(["_id": "$" + E.name + "._id"])
+        ]
+
+        for join in query.joins {
+
+            guard let lookup = join.wrapped else {
+                continue
+            }
+
+            let collectionName = lookup.joined.name
+
+            pipeline.append(.lookup(from: self[lookup.joined.entity], localField: lookup.baseKey, foreignField: lookup.joinedKey, as: collectionName))
+            pipeline.append(.unwind("$" + collectionName))
+        }
+
+        pipeline.append(.match(filter))
+
+        if let sort = sort {
+            pipeline.append(.sort(sort))
+        }
+
+        if let skip = skip {
+            pipeline.append(.skip(skip))
+        }
+
+        if let limit = limit {
+            pipeline.append(.limit(limit))
+        }
+
+        return pipeline
+    }
+
     private func fetch<E>(_ query: Fluent.Query<E>) throws -> Node {
 
         guard case .fetch(let computedProperties) = query.action else {
@@ -247,24 +297,13 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try makeQuery(query.filters, method: .and)
-        let sort = makeSort(query.sorts)
-        let (limit, skip) = try makeLimits(query.limits)
+        let pipeline = try makeAggregationPipeline(query)
 
-        if let lookup = query.joins.first?.wrapped {
-            let results = try self[lookup.joined.entity].aggregate([
-                .match(filter),
-                .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
-                .project(["_id"]),
-                .unwind("$_id"),
-                ])
+        let cursor = try collection.aggregate(pipeline)
 
-            return Array(results.flatMap({ input in
-                return Document(input["_id"])
-            })).makeNode()
-        }
-
-        return Array(try collection.find(filter, sortedBy: sort, skipping: skip, limitedTo: limit)).makeNode()
+        return Array(cursor.flatMap({ input in
+            return Document(input[E.name])
+        })).makeNode()
     }
 
     private func aggregate<E>(_ query: Fluent.Query<E>) throws -> Node {
@@ -282,32 +321,23 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        var effectiveCollection = collection
-        let filter = try self.makeQuery(query.filters, method: .and)
-        var pipeline: AggregationPipeline = [.match(filter)]
-
-        if let lookup = query.joins.first?.wrapped {
-
-            effectiveCollection = self[lookup.joined.entity]
-            pipeline.append(.lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: lookup.base.name))
-            pipeline.append(.project(Projection(["_id": false]) + Projection([someField: "$" + lookup.base.name + "." + someField])))
-            pipeline.append(.unwind("$" + someField))
-        }
+        let namespacedField = "$" + E.name + "." + someField
+        var pipeline = try makeAggregationPipeline(query)
 
         switch action {
         case .average:
-            pipeline.append(.group("null", computed: ["aggregated_value": .averageOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .averageOf(namespacedField)]))
         case .sum:
-            pipeline.append(.group("null", computed: ["aggregated_value": .sumOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .sumOf(namespacedField)]))
         case .min:
-            pipeline.append(.group("null", computed: ["aggregated_value": .minOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .minOf(namespacedField)]))
         case .max:
-            pipeline.append(.group("null", computed: ["aggregated_value": .maxOf("$" + someField)]))
+            pipeline.append(.group("null", computed: ["aggregated_value": .maxOf(namespacedField)]))
         default:
             throw Error.unsupported
         }
 
-        let cursor = try effectiveCollection.aggregate(pipeline)
+        let cursor = try collection.aggregate(pipeline)
 
         return Array(cursor.flatMap({ input in
             return Int(input["aggregated_value"])
@@ -316,35 +346,20 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
     private func count<E>(_ query: Fluent.Query<E>) throws -> Node {
 
-        guard case .aggregate(let field, .count) = query.action else {
+        guard case .aggregate(_, .count) = query.action else {
             throw Error.invalidQuery
         }
 
         let collection = self[E.entity]
-        var filter = try makeQuery(query.filters, method: .and)
-        let (limit, skip) = try makeLimits(query.limits)
+        var pipeline = try makeAggregationPipeline(query)
 
-        // Counting is not necessarily an aggregation operation in MongoDB
-        if let field = field {
-            filter &= Query(aqt: .exists(key: field, exists: true))
-        }
+        pipeline.append(.count(insertedAtKey: "count"))
 
-        // TODO: Support ComputedProperties
-        if let lookup = query.joins.first?.wrapped {
-            let results = try self[lookup.joined.entity].aggregate([
-                .match(filter),
-                .lookup(from: collection, localField: lookup.joinedKey, foreignField: lookup.baseKey, as: "_id"),
-                .project(["_id"]),
-                .unwind("$_id"),
-                .count(insertedAtKey: "count")
-                ])
+        let cursor = try collection.aggregate(pipeline)
 
-            return Array(results.flatMap({ input in
-                return Int(input["count"])
-            })).first?.makeNode() ?? 0
-        }
-
-        return try collection.count(filter, limitedTo: limit, skipping: skip).makeNode()
+        return Array(cursor.flatMap({ input in
+            return Int(input["count"])
+        })).first?.makeNode() ?? 0
     }
 
     private func modify<E>(_ query: Fluent.Query<E>) throws -> Node {
@@ -354,8 +369,13 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try self.makeQuery(query.filters, method: .and)
-        let document = try makeDocument(query.data)
+        let document = try self.makeDocument(query.data)
+        var pipeline = try self.makeAggregationPipeline(query)
+        pipeline.append(.project(["_id"]))
+
+        let cursor = try collection.aggregate(pipeline)
+
+        let filter = MKQuery(aqt: AQT.in(key: "_id", in: cursor.flatMap({ $0["_id"] })))
 
         return try collection.update(filter, to: ["$set": document], upserting: false, multiple: true).makeNode()
     }
@@ -367,10 +387,14 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         let collection = self[E.entity]
-        let filter = try self.makeQuery(query.filters, method: .and)
-        let limit = try makeLimits(query.limits).limit ?? 0
+        var pipeline = try self.makeAggregationPipeline(query)
+        pipeline.append(.project(["_id"]))
 
-        return try collection.remove(filter, limitedTo: limit).makeNode()
+        let cursor = try collection.aggregate(pipeline)
+
+        let filter = MKQuery(aqt: AQT.in(key: "_id", in: cursor.flatMap({ $0["_id"] })))
+
+        return try collection.remove(filter, limitedTo: 0).makeNode()
     }
 
     private func schema<E>(_ query: Fluent.Query<E>) throws -> Node {
