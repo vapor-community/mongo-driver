@@ -12,6 +12,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "MongoDriver", dependencies: ["Fluent", "MongoKitten"]),
-        .testTarget(name: "MongoDriverTests", dependencies: ["MongoDriver"])
+        .testTarget(name: "MongoDriverTests", dependencies: ["MongoDriver", "FluentTester"])
     ]
 )
