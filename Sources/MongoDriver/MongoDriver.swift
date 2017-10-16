@@ -264,7 +264,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             let collectionName = lookup.joined.name
 
             pipeline.append(.lookup(from: self[lookup.joined.entity], localField: lookup.baseKey, foreignField: lookup.joinedKey, as: collectionName))
-            pipeline.append(.unwind("$" + collectionName))
+            pipeline.append(.unwind("$" + collectionName, preserveNullAndEmptyArrays: lookup.kind == .outer))
         }
 
         pipeline.append(.match(filter))
