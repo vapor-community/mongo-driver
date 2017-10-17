@@ -8,6 +8,7 @@ class DriverTests: XCTestCase {
         return [
             ("testInsertAndFind", testInsertAndFind),
             ("testArray", testArray),
+            ("testOuterJoin", testOuterJoin),
             ("testSiblingsCount", testSiblingsCount),
             ("testMax", testMax),
             ("testSiblingsMax", testSiblingsMax),
@@ -59,6 +60,49 @@ class DriverTests: XCTestCase {
         
         XCTAssert(foundStore.vinyls.count == 3)
         XCTAssert(foundStore.vinyls.filter({ return $0.name == "Thriller" }).count == 1)
+    }
+
+    func testOuterJoin() throws {
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Pet.database = db
+        Toy.database = db
+
+        let ball = Toy(name: "ball")
+        let bone = Toy(name: "bone")
+        let puppet = Toy(name: "puppet")
+
+        try ball.save()
+        try bone.save()
+        try puppet.save()
+
+        let molly = Pet(name: "Molly", age: 2)
+        molly.favoriteToyId = ball.id
+
+        let rex = Pet(name: "Rex", age: 1)
+
+        try molly.save()
+        try rex.save()
+
+        XCTAssertNotNil(try molly.favoriteToy.get())
+        XCTAssertNil(try rex.favoriteToy.get())
+
+        let toysFavoritedByPets = try Toy.makeQuery()
+            .join(kind: .inner, Pet.self, baseKey: Toy.idKey, joinedKey: "favoriteToyId")
+            .all()
+
+        XCTAssertEqual(toysFavoritedByPets.count, 1)
+        XCTAssertEqual(toysFavoritedByPets.first?.id, ball.id)
+
+        let toysNotFavoritedByPets = try Toy.makeQuery()
+            .join(kind: .outer, Pet.self, baseKey: Toy.idKey, joinedKey: "favoriteToyId")
+            .filter(Pet.self, Pet.idKey, .equals, nil)
+            .all()
+
+        XCTAssertEqual(toysNotFavoritedByPets.count, 2)
+        XCTAssertTrue(toysNotFavoritedByPets.contains(where: { $0.id == bone.id }))
+        XCTAssertTrue(toysNotFavoritedByPets.contains(where: { $0.id == puppet.id }))
     }
 
     func testSiblingsCount() throws {
