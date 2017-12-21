@@ -1,9 +1,23 @@
+// swift-tools-version:4.0
+// The swift-tools-version declares the minimum version of Swift required to build this package.
+
 import PackageDescription
 
-let package = Package(
-    name: "MongoDriver",
+var package = Package(
+    name: "FluentMongo",
+    products: [
+        // Products define the executables and libraries produced by a package, and make them visible to other packages.
+        .library(
+            name: "FluentMongo",
+            targets: ["FluentMongo"]),
+    ],
     dependencies: [
-        .Package(url: "https://github.com/vapor/fluent.git", majorVersion: 2),
-        .Package(url: "https://github.com/OpenKitten/MongoKitten.git", majorVersion: 4, minor: 0),
+        .package(url: "https://github.com/OpenKitten/MongoKitten.git", .revision("master/5.0")),
+        .package(url: "https://github.com/vapor/fluent.git", .revision("beta")),
+    ],
+    targets: [
+        .target(
+            name: "FluentMongo",
+            dependencies: ["MongoKitten", "Fluent"]),
     ]
 )
