@@ -19,5 +19,8 @@ var package = Package(
         .target(
             name: "FluentMongo",
             dependencies: ["MongoKitten", "Fluent"]),
+        .testTarget(
+            name: "FluentMongoTests",
+            dependencies: ["FluentMongo"]),
     ]
 )

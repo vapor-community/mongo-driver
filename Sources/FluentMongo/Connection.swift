@@ -5,13 +5,230 @@ import Fluent
 import MongoKitten
 
 /// An error that gets thrown if the ConnectionRepresentable needs to represent itself but fails to do so because it is used in a different context
-struct InvalidConnectionType: Error{}
+struct FluentMongoError: Error {
+    enum Problem {
+        case invalidConnectionType, invalidCreateQuery, searchInInvalidPrimitive, unsupported, implementationError
+    }
+    
+    var problem: Problem
+}
+
+extension ObjectId: ID {
+    public static var identifierType: IDType<ObjectId> {
+        return IDType<ObjectId>.generated {
+            return ObjectId()
+        }
+    }
+}
+
+extension QueryComparison {
+    func apply(_ value: Primitive, to field: String, on query: inout Query) throws {
+        switch self {
+        case .equality(let comparison):
+            switch comparison {
+            case .equals:
+                query &= field == value
+            case .notEquals:
+                query &= field != value
+            }
+        case .order(let order):
+            switch order {
+            case .greaterThan:
+                query &= field > value
+            case .greaterThanOrEquals:
+                query &= field >= value
+            case .lessThan:
+                query &= field < value
+            case .lessThanOrEquals:
+                query &= field <= value
+            }
+        case .sequence(let sequence):
+            guard let value = value as? String else {
+                throw FluentMongoError(problem: .searchInInvalidPrimitive)
+            }
+            
+            switch sequence {
+            case .contains:
+                query &= Query(aqt: AQT.contains(key: field, val: value, options: []))
+            case .hasPrefix:
+                query &= Query(aqt: AQT.startsWith(key: field, val: value))
+            case .hasSuffix:
+                query &= Query(aqt: AQT.endsWith(key: field, val: value))
+            }
+        }
+    }
+}
+
+extension Array where Element == Encodable {
+    func makePrimitives() throws -> [Primitive] {
+        return try self.map { element in
+            return try BSONEncoder().encode(primitive: element)
+        }
+    }
+}
+
+extension Array where Element == QueryFilter {
+    func makeQuery() throws -> Query {
+        var query = Query()
+        
+        for filter in self {
+            switch filter.method {
+            case .compare(let field, let type, let value):
+                switch value {
+                case .field(_):
+                    // TODO: Should be technically possible, but is complex
+                    throw FluentMongoError(problem: .unsupported)
+                case .value(let encodable):
+                    let value = try BSONEncoder().encode(primitive: encodable)
+                    
+                    try type.apply(value, to: field.name, on: &query)
+                }
+            case .group(let relation, let filters):
+                switch relation {
+                case .and:
+                    try query = query && filters.makeQuery()
+                case .or:
+                    try query = query || filters.makeQuery()
+                }
+            case .subset(let field, let scope, let value):
+                switch scope {
+                case .in:
+                    switch value {
+                    case .array(let array):
+                        try query &= Query(aqt: AQT.in(key: field.name, in: array.makePrimitives()))
+                    case .subquery(_):
+                        // FIXME: MK5
+                        throw FluentMongoError(problem: .unsupported)
+                    }
+                case .notIn:
+                    switch value {
+                    case .array(let array):
+                        try query &= !Query(aqt: AQT.in(key: field.name, in: array.makePrimitives()))
+                    case .subquery(_):
+                        // FIXME: MK5
+                        throw FluentMongoError(problem: .unsupported)
+                    }
+                }
+            }
+        }
+        
+        return query
+    }
+}
+
+extension Array where Element == QuerySort {
+    func makeMKSort() -> MongoKitten.Sort {
+        return self.map { sort in
+            return [
+                sort.field.name: sort.direction.makeMKOrder()
+            ]
+        }.reduce([:], +)
+    }
+}
+
+extension QuerySortDirection {
+    func makeMKOrder() -> MongoKitten.SortOrder {
+        switch self {
+        case .ascending:
+            return .ascending
+        case .descending:
+            return .descending
+        }
+    }
+}
 
 extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
     public typealias Config = MongoKitten.ClientSettings
     
     public func execute<I, D>(query: DatabaseQuery, into stream: I) where I : InputStream, D : Decodable, D == I.Input {
-        
+        do {
+            let collection = self[query.entity][query.entity]
+            
+            let mkQuery = try query.filters.makeQuery()
+            
+            switch query.action {
+            case .create:
+                guard let data = query.data else {
+                    throw FluentMongoError(problem: .invalidCreateQuery)
+                }
+                
+                var document = try BSONEncoder().encode(data)
+                
+                let id = document["_id"] ?? ObjectId()
+                document["_id"] = id
+                
+                collection.insert(document).transform(to: id).do { _ in
+                    stream.close()
+                }.catch { error in
+                    stream.error(error)
+                    stream.close()
+                }
+            case .read:
+                if query.aggregates.count >= 1 {
+                    let aggregate = query.aggregates[0]
+                    
+                    guard case .count = aggregate.method, query.aggregates.count == 1 else {
+                        throw FluentMongoError(problem: .unsupported)
+                    }
+                    
+                    let count: Future<Int>
+                    
+                    if let range = query.range {
+                        if let upper = range.upper {
+                            count = collection.count(mkQuery, in: range.lower..<upper)
+                        } else {
+                            count = collection.count(mkQuery, in: range.lower...)
+                        }
+                    } else {
+                        count = collection.count(mkQuery)
+                    }
+                    
+                    count.do { count in
+                        if D.self == Int.self {
+                            stream.next(count as! D)
+                        } else {
+                            print("\(D.self)")
+                            stream.error(FluentMongoError(problem: .implementationError))
+                        }
+                        
+                        stream.close()
+                    }.catch { error in
+                        stream.error(error)
+                        stream.close()
+                    }
+                } else {
+                    let cursor: Future<Cursor>
+                    let sort = query.sorts.makeMKSort()
+                    
+                    if let range = query.range {
+                        if let upper = range.upper {
+                            cursor = collection.find(mkQuery, in: range.lower..<upper, sortedBy: sort)
+                        } else {
+                            cursor = collection.find(mkQuery, in: range.lower..., sortedBy: sort)
+                        }
+                    } else {
+                        cursor = collection.find(mkQuery, sortedBy: sort)
+                    }
+                    
+                    cursor.do { cursor in
+                        cursor.map(to: D.self) { doc in
+                            return try BSONDecoder().decode(D.self, from: doc)
+                        }.output(to: stream)
+                    }.catch { error in
+                        stream.error(error)
+                        stream.close()
+                    }
+                }
+            case .update:
+                fatalError()
+            case .delete:
+                fatalError()
+            case .aggregate(let operation, let entity, let field):
+                fatalError()
+            }
+        } catch {
+            stream.error(error)
+        }
     }
     
     public var lastAutoincrementID: Int? {
@@ -24,12 +241,11 @@ extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
     
     public func connect<D>(to database: DatabaseIdentifier<D>) -> Future<D.Connection> {
         guard D.self == MongoDB.self else {
-            return Future(error: InvalidConnectionType())
+            return Future(error: FluentMongoError(problem: .invalidConnectionType))
         }
         
         return Future(self[database.uid] as! D.Connection)
     }
-    
 }
 
 ///// A Fluent wrapper around a MySQL connection that can log
