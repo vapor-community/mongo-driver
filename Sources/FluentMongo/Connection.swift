@@ -15,9 +15,7 @@ struct FluentMongoError: Error {
 
 extension ObjectId: ID {
     public static var identifierType: IDType<ObjectId> {
-        return IDType<ObjectId>.generated {
-            return ObjectId()
-        }
+        return .supplied
     }
 }
 
@@ -62,7 +60,7 @@ extension QueryComparison {
 extension Array where Element == Encodable {
     func makePrimitives() throws -> [Primitive] {
         return try self.map { element in
-            return try BSONEncoder().encode(primitive: element)
+            return try BSONEncoder().encodePrimitive(element)
         }
     }
 }
@@ -79,7 +77,7 @@ extension Array where Element == QueryFilter {
                     // TODO: Should be technically possible, but is complex
                     throw FluentMongoError(problem: .unsupported)
                 case .value(let encodable):
-                    let value = try BSONEncoder().encode(primitive: encodable)
+                    let value = try BSONEncoder().encodePrimitive(encodable)
                     
                     try type.apply(value, to: field.name, on: &query)
                 }
@@ -146,8 +144,22 @@ extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
             
             let mkQuery = try query.filters.makeQuery()
             
+            func send<P: Primitive>(_ future: Future<P>) {
+                future.map(to: D.self) { count in
+                    return try BSONDecoder().decode(D.self, from: [
+                        "fluentAggregate": count
+                        ] as Document)
+                    }.do { count in
+                        stream.next(count)
+                        stream.close()
+                    }.catch { error in
+                        stream.error(error)
+                        stream.close()
+                }
+            }
+            
             switch query.action {
-            case .create:
+            case .create, .update:
                 guard let data = query.data else {
                     throw FluentMongoError(problem: .invalidCreateQuery)
                 }
@@ -157,7 +169,7 @@ extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
                 let id = document["_id"] ?? ObjectId()
                 document["_id"] = id
                 
-                collection.insert(document).transform(to: id).do { _ in
+                collection.upsert("_id" == id, to: document).transform(to: id).do { _ in
                     stream.close()
                 }.catch { error in
                     stream.error(error)
@@ -183,19 +195,7 @@ extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
                         count = collection.count(mkQuery)
                     }
                     
-                    count.do { count in
-                        if D.self == Int.self {
-                            stream.next(count as! D)
-                        } else {
-                            print("\(D.self)")
-                            stream.error(FluentMongoError(problem: .implementationError))
-                        }
-                        
-                        stream.close()
-                    }.catch { error in
-                        stream.error(error)
-                        stream.close()
-                    }
+                    send(count)
                 } else {
                     let cursor: Future<Cursor>
                     let sort = query.sorts.makeMKSort()
@@ -219,11 +219,11 @@ extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
                         stream.close()
                     }
                 }
-            case .update:
-                fatalError()
             case .delete:
-                fatalError()
-            case .aggregate(let operation, let entity, let field):
+                let removed = collection.remove(mkQuery)
+                
+                send(removed)
+            case .aggregate(_, _, _):
                 fatalError()
             }
         } catch {

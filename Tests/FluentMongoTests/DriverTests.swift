@@ -9,7 +9,7 @@ class FluentMongoTests: XCTestCase {
     
     override func setUp() {
         self.db = MongoDB(database: "test").makeConnectionPool(max: 20, using: "mongodb://localhost:27017", on: loop)
-        try! self.db.requestConnection().flatMap(to: Void.self) { conn in
+        _ = try? self.db.requestConnection().flatMap(to: Void.self) { conn in
             return try conn["test"].drop()
         }.blockingAwait()
     }
@@ -43,9 +43,7 @@ class FluentMongoTests: XCTestCase {
         }.flatMap(to: Int.self) {
             return conn.query(Foo.self).count()
         }.flatMap(to: Void.self) { count in
-            if count != 2 {
-                XCTFail("count should have been 2")
-            }
+            XCTAssertEqual(count, 2)
             
             // update
             b.bar = "fdsa"
@@ -54,18 +52,13 @@ class FluentMongoTests: XCTestCase {
         }.flatMap(to: Foo?.self) {
             return try Foo.find(b.requireID(), on: conn)
         }.flatMap(to: Void.self) { fetched in
-            // read
-            if fetched?.bar != "fdsa" {
-                XCTFail("b.bar should have been updated")
-            }
+            XCTAssertEqual(fetched?.bar, "fdsa")
             
             return b.delete(on: conn)
         }.flatMap(to: Int.self) {
             return conn.query(Foo.self).count()
         }.map(to: Void.self) { count in
-            if count != 1 {
-                XCTFail("count should have been 1")
-            }
+            XCTAssertEqual(count, 1)
         }
     }
     
@@ -98,7 +91,7 @@ final class Foo: Model {
     }
     
     /// Foo's identifier
-    var _id: ObjectId?
+    var _id: ObjectId? = ObjectId()
     
     /// Test string
     var bar: String
