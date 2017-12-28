@@ -1,10 +1,10 @@
 #if os(Linux)
 
 import XCTest
-@testable import MongoDriverTests
+@testable import FluentMongoDBTests
 
 XCTMain([
-    testCase(DriverTests.allTests),
+    testCase(FluentMongoDBTests.allTests),
 ])
 
 #endif

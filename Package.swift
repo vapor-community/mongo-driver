@@ -8,8 +8,8 @@ var package = Package(
     products: [
         // Products define the executables and libraries produced by a package, and make them visible to other packages.
         .library(
-            name: "FluentMongo",
-            targets: ["FluentMongo"]),
+            name: "FluentMongoDB",
+            targets: ["FluentMongoDB"]),
     ],
     dependencies: [
         .package(url: "https://github.com/OpenKitten/MongoKitten.git", .revision("master/5.0")),
@@ -17,10 +17,10 @@ var package = Package(
     ],
     targets: [
         .target(
-            name: "FluentMongo",
+            name: "FluentMongoDB",
             dependencies: ["MongoKitten", "Fluent"]),
         .testTarget(
-            name: "FluentMongoTests",
-            dependencies: ["FluentMongo"]),
+            name: "FluentMongoDBTests",
+            dependencies: ["FluentMongoDB"]),
     ]
 )
