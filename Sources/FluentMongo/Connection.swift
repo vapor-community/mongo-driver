@@ -197,7 +197,7 @@ extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
                     
                     send(count)
                 } else {
-                    let cursor: Future<Cursor>
+                    let cursor: Cursor
                     let sort = query.sorts.makeMKSort()
                     
                     if let range = query.range {
@@ -210,14 +210,9 @@ extension MongoKitten.DatabaseConnection: Fluent.DatabaseConnection {
                         cursor = collection.find(mkQuery, sortedBy: sort)
                     }
                     
-                    cursor.do { cursor in
-                        cursor.map(to: D.self) { doc in
-                            return try BSONDecoder().decode(D.self, from: doc)
-                        }.output(to: stream)
-                    }.catch { error in
-                        stream.error(error)
-                        stream.close()
-                    }
+                    cursor.map(to: D.self) { doc in
+                        return try BSONDecoder().decode(D.self, from: doc)
+                    }.output(to: stream)
                 }
             case .delete:
                 let removed = collection.remove(mkQuery)
