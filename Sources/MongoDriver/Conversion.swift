@@ -86,7 +86,7 @@ extension ObjectId : NodeConvertible {
             throw NodeError.unableToConvert(input: node, expectation: "\(ObjectId.self)", path: [])
         }
         
-        string.characters.removeFirst(4)
+        string.removeFirst(4)
         self = try ObjectId(string)
     }
 }
