@@ -14,9 +14,12 @@ final class Pet: Entity {
 
     public let age: Int
 
-    public init(name: String, age: Int) {
+    public var favoriteToyId: Identifier?
+
+    public init(name: String, age: Int, favoriteToyId: Identifier? = nil) {
         self.name = name
         self.age = age
+        self.favoriteToyId = favoriteToyId
     }
 
     // MARK: Storable
@@ -27,7 +30,11 @@ final class Pet: Entity {
 
     public convenience init(row: Row) throws {
 
-        self.init(name: try row.get("name"), age: try row.get("age"))
+        self.init(
+            name: try row.get("name"),
+            age: try row.get("age"),
+            favoriteToyId: try row.get("favoriteToyId")
+        )
     }
 
     public func makeRow() throws -> Row {
@@ -37,6 +44,7 @@ final class Pet: Entity {
         try row.set(Pet.idKey, self.id)
         try row.set("name", self.name)
         try row.set("age", self.age)
+        try row.set("favoriteToyId", self.favoriteToyId)
 
         return row
     }
@@ -45,6 +53,10 @@ final class Pet: Entity {
 // MARK: - Relationships
 
 extension Pet {
+
+    public var favoriteToy: Parent<Pet, Toy> {
+        return self.parent(id: self.favoriteToyId)
+    }
 
     public var toys: Siblings<Pet, Toy, Pivot<Pet, Toy>> {
         return self.siblings()
