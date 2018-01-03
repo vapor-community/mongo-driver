@@ -86,7 +86,7 @@ extension ObjectId : NodeConvertible {
             throw NodeError.unableToConvert(input: node, expectation: "\(ObjectId.self)", path: [])
         }
         
-        string.removeFirst(4)
+        string.toCharacterSequence().removeFirst(4)
         self = try ObjectId(string)
     }
 }
@@ -234,4 +234,16 @@ extension StructuredData : Primitive {
             return 0x09
         }
     }
+}
+
+extension String {
+    #if swift(>=4.0)
+    private func toCharacterSequence() -> String {
+        return self
+    }
+    #else
+    private func toCharacterSequence() -> CharacterView {
+        return self.characters
+    }
+    #endif    
 }
