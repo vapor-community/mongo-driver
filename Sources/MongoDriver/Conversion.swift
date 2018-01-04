@@ -85,8 +85,13 @@ extension ObjectId : NodeConvertible {
         guard var string = node.string, string.hasPrefix("oid:") else {
             throw NodeError.unableToConvert(input: node, expectation: "\(ObjectId.self)", path: [])
         }
-        
-        string.characters.removeFirst(4)
+
+        #if swift(>=4.0)
+            string.removeFirst(4)
+        #else
+            string.characters.removeFirst(4)
+        #endif
+
         self = try ObjectId(string)
     }
 }
