@@ -8,6 +8,7 @@ class DriverTests: XCTestCase {
         return [
             ("testInsertAndFind", testInsertAndFind),
             ("testArray", testArray),
+            ("testArrayOfArrays", testArrayOfArrays),
             ("testOuterJoin", testOuterJoin),
             ("testSiblingsCount", testSiblingsCount),
             ("testMax", testMax),
@@ -44,9 +45,9 @@ class DriverTests: XCTestCase {
         
         let recordStore = RecordStore(
             vinyls: [
-                Vinyl(name: "Thriller", year: 1982),
-                Vinyl(name: "Back in Black", year: 1980),
-                Vinyl(name: "The Dark Side of the Moon", year: 1973)
+                Vinyl(authors: ["Michael Jackson"], name: "Thriller", year: 1982),
+                Vinyl(authors: ["AC/DC"], name: "Back in Black", year: 1980),
+                Vinyl(authors: ["Pink Floyd"], name: "The Dark Side of the Moon", year: 1973)
             ]
         )
 
@@ -60,6 +61,33 @@ class DriverTests: XCTestCase {
         
         XCTAssert(foundStore.vinyls.count == 3)
         XCTAssert(foundStore.vinyls.filter({ return $0.name == "Thriller" }).count == 1)
+    }
+
+    func testArrayOfArrays() throws {
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        NodeEntity.database = db
+
+        let node: Node = [
+            "key1": "value1",
+            "key2": [
+                ["k2i0v1", "k2i0v2"],
+                ["k2i1v1", "k2i1v2"]
+            ]
+        ]
+
+        let entity = NodeEntity(node: node)
+        try entity.save()
+
+        guard let foundNode = try NodeEntity.makeQuery().all().first else {
+            XCTFail()
+            return
+        }
+
+        XCTAssertEqual(foundNode.node["key1"]?.string, "value1")
+        XCTAssertEqual(foundNode.node["key2"]!.array!.first!.array!.flatMap { $0.string }, ["k2i0v1", "k2i0v2"])
+        XCTAssertEqual(foundNode.node["key2"]!.array!.last!.array!.flatMap { $0.string }, ["k2i1v1", "k2i1v2"])
     }
 
     func testOuterJoin() throws {
