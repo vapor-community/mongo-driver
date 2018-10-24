@@ -170,7 +170,7 @@ extension StructuredData : Convertible {
             
             return string.convert(to: type)
         case .array(let array):
-            return array.convert(to: type)
+            return array.compactMap { $0.convert(to: type) } as? DT.SupportedValue
         case .object(let object):
             return object.convert(to: type)
         case .bytes(let bytes):
