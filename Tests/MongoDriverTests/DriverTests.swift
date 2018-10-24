@@ -86,8 +86,8 @@ class DriverTests: XCTestCase {
         }
 
         XCTAssertEqual(foundNode.node["key1"]?.string, "value1")
-        XCTAssertEqual(foundNode.node["key2"]?.array?.first?.array, ["k2i0v1", "k2i0v2"])
-        XCTAssertEqual(foundNode.node["key2"]?.array?.last?.array, ["k2i1v1", "k2i1v2"])
+        XCTAssertEqual(foundNode.node["key2"]?.array?.first?.array?.flatMap { $0.string }, ["k2i0v1", "k2i0v2"])
+        XCTAssertEqual(foundNode.node["key2"]?.array?.last?.array?.flatMap { $0.string }, ["k2i1v1", "k2i1v2"])
     }
 
     func testOuterJoin() throws {
