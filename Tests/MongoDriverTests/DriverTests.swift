@@ -9,6 +9,7 @@ class DriverTests: XCTestCase {
             ("testInsertAndFind", testInsertAndFind),
             ("testArray", testArray),
             ("testArrayOfArrays", testArrayOfArrays),
+            ("testDistinct", testDistinct),
             ("testOuterJoin", testOuterJoin),
             ("testSiblingsCount", testSiblingsCount),
             ("testMax", testMax),
@@ -90,6 +91,30 @@ class DriverTests: XCTestCase {
         XCTAssertEqual(foundNode.node["key2"]!.array!.last!.array!.flatMap { $0.string }, ["k2i1v1", "k2i1v2"])
     }
 
+    func testDistinct() throws {
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Toy.database = db
+
+        let ball = Toy(name: "ball", material: "rubber")
+        let bone = Toy(name: "bone", material: "plastic")
+        let puppet = Toy(name: "puppet")
+        let anotherBall = Toy(name: "ball", material: "rubber")
+
+        try ball.save()
+        try bone.save()
+        try puppet.save()
+        try anotherBall.save()
+
+        let toys = try Toy.makeQuery().distinct().all([.raw("name", [])])
+
+        XCTAssertEqual(toys.count, 3)
+        XCTAssertTrue(toys.contains(where: { $0.name == "ball" }))
+        XCTAssertTrue(toys.contains(where: { $0.name == "bone" }))
+        XCTAssertTrue(toys.contains(where: { $0.name == "puppet" }))
+    }
+
     func testOuterJoin() throws {
         try driver.drop()
         let db = Fluent.Database(driver)
@@ -118,7 +143,7 @@ class DriverTests: XCTestCase {
 
         let toysFavoritedByPets = try Toy.makeQuery()
             .join(kind: .inner, Pet.self, baseKey: Toy.idKey, joinedKey: "favoriteToyId")
-            .all()
+            .all([.raw("name", [])])
 
         XCTAssertEqual(toysFavoritedByPets.count, 1)
         XCTAssertEqual(toysFavoritedByPets.first?.id, ball.id)
@@ -126,7 +151,7 @@ class DriverTests: XCTestCase {
         let toysNotFavoritedByPets = try Toy.makeQuery()
             .join(kind: .outer, Pet.self, baseKey: Toy.idKey, joinedKey: "favoriteToyId")
             .filter(Pet.self, Pet.idKey, .equals, nil)
-            .all()
+            .all([.raw("name", [])])
 
         XCTAssertEqual(toysNotFavoritedByPets.count, 2)
         XCTAssertTrue(toysNotFavoritedByPets.contains(where: { $0.id == bone.id }))
