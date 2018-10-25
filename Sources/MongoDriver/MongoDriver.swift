@@ -299,7 +299,10 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         pipeline.append(.match(filter))
 
         if query.isDistinct {
-            pipeline.append(.group("$\(E.name)", computed: [E.name: .first("$\(E.name)")]))
+            let groupId: ExpressionRepresentable = rawComputedProperties.isEmpty
+                ? Document([E.name: "$$ROOT"])
+                : Document(rawComputedProperties.reduce(into: [:], { $0[$1] = "$\(E.name).\($1)" }))
+            pipeline.append(.group(groupId, computed: [E.name: .first("$\(E.name)")]))
             pipeline.append(.project(Projection(["_id": "$\(E.name)._id", "\(E.name)": "$\(E.name)"])))
         }
 
