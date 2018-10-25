@@ -272,7 +272,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         let projectionFields: [String: Projection.ProjectionExpression]
 
         if !rawComputedProperties.isEmpty {
-            var fields: [String: BSON.Primitive] = rawComputedProperties.reduce([String: BSON.Primitive](), { (result, property) -> [String: BSON.Primitive] in
+            var fields: [String: BSON.Primitive] = rawComputedProperties.reduce([:], { result, property in
                 var mutableResult = result
                 mutableResult[property] = "$$ROOT." + property
                 return mutableResult
