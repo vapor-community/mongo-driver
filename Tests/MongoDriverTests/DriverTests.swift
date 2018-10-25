@@ -10,6 +10,7 @@ class DriverTests: XCTestCase {
             ("testArray", testArray),
             ("testArrayOfArrays", testArrayOfArrays),
             ("testDistinct", testDistinct),
+            ("testDistinctWithoutRawComputedFields", testDistinctWithoutRawComputedFields),
             ("testOuterJoin", testOuterJoin),
             ("testSiblingsCount", testSiblingsCount),
             ("testMax", testMax),
@@ -113,6 +114,41 @@ class DriverTests: XCTestCase {
         XCTAssertTrue(toys.contains(where: { $0.name == "ball" }))
         XCTAssertTrue(toys.contains(where: { $0.name == "bone" }))
         XCTAssertTrue(toys.contains(where: { $0.name == "puppet" }))
+    }
+
+    func testDistinctWithoutRawComputedFields() throws {
+        try driver.drop()
+        let db = Fluent.Database(driver)
+
+        Adult.database = db
+        Child.database = db
+
+        let alice = Adult(name: "Alice")
+        let bob = Adult(name: "Bob")
+        let charlie = Adult(name: "Charlie")
+
+        XCTAssertNoThrow(try alice.save())
+        XCTAssertNoThrow(try bob.save())
+        XCTAssertNoThrow(try charlie.save())
+
+        let molly = Child(name: "Molly", age: 2, parentId: try alice.assertExists())
+        let kevin = Child(name: "Rex", age: 1, parentId: try bob.assertExists())
+        let bill = Child(name: "Sparky", age: 1, parentId: try bob.assertExists())
+
+        XCTAssertNoThrow(try molly.save())
+        XCTAssertNoThrow(try kevin.save())
+        XCTAssertNoThrow(try bill.save())
+
+        let adults = try Adult
+            .makeQuery()
+            .join(kind: .inner, Child.self, baseKey: Adult.idKey, joinedKey: "parentId")
+            .filter(Child.self, "age", 1)
+            .distinct()
+            .all()
+
+        XCTAssertEqual(adults.count, 1)
+        XCTAssertEqual(adults.first?.id, try bob.assertExists())
+        XCTAssertEqual(adults.first?.name, "Bob")
     }
 
     func testOuterJoin() throws {
