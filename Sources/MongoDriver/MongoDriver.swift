@@ -211,10 +211,12 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
             return []
         }
 
-        return try computedProperties.reduce(into: [String](), { result, property in
+        return try computedProperties.reduce([String](), { result, property in
             switch property {
             case .raw(let value, _):
-                result += value
+                var mutableResult = result
+                mutableResult += value
+                return mutableResult
             case .some:
                 throw Error.unsupported
             }
@@ -270,8 +272,10 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         let projectionFields: [String: Projection.ProjectionExpression]
 
         if !rawComputedProperties.isEmpty {
-            var fields = rawComputedProperties.reduce(into: [String: BSON.Primitive?](), { result, property in
-                result[property] = "$$ROOT." + property
+            var fields = rawComputedProperties.reduce([String: BSON.Primitive?](), { result, property in
+                var mutableResult = result
+                mutableResult[property] = "$$ROOT." + property
+                return mutableResult
             })
             fields["_id"] = "$$ROOT._id"
             projectionFields = [E.name: .custom(fields)]
@@ -301,7 +305,11 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         if query.isDistinct {
             let groupId: ExpressionRepresentable = rawComputedProperties.isEmpty
                 ? Document([E.name: "$$ROOT"])
-                : Document(rawComputedProperties.reduce(into: [:], { $0[$1] = "$\(E.name).\($1)" }))
+                : Document(rawComputedProperties.reduce([:], { result, value in
+                    var mutableResult = result
+                    mutableResult[value] = "$\(E.name).\(value)"
+                    return mutableResult
+                }))
             pipeline.append(.group(groupId, computed: [E.name: .first("$\(E.name)")]))
             pipeline.append(.project(Projection(["_id": "$\(E.name)._id", "\(E.name)": "$\(E.name)"])))
         }
