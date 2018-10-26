@@ -304,7 +304,7 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
         if query.isDistinct {
             let groupId: ExpressionRepresentable = rawComputedProperties.isEmpty
-                ? Document([E.name: "$$ROOT"])
+                ? "null"
                 : Document(rawComputedProperties.reduce([:], { result, value in
                     var mutableResult = result
                     mutableResult[value] = "$\(E.name).\(value)"
