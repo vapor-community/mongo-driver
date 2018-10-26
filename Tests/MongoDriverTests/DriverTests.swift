@@ -132,12 +132,16 @@ class DriverTests: XCTestCase {
         XCTAssertNoThrow(try charlie.save())
 
         let molly = Child(name: "Molly", age: 2, parentId: try alice.assertExists())
-        let kevin = Child(name: "Rex", age: 1, parentId: try bob.assertExists())
-        let bill = Child(name: "Sparky", age: 1, parentId: try bob.assertExists())
+        let kevin = Child(name: "Kevin", age: 1, parentId: try bob.assertExists())
+        let bill = Child(name: "Bill", age: 1, parentId: try bob.assertExists())
+        let simon = Child(name: "Simon", age: 1, parentId: try charlie.assertExists())
+        let kelly = Child(name: "Kelly", age: 1, parentId: try charlie.assertExists())
 
         XCTAssertNoThrow(try molly.save())
         XCTAssertNoThrow(try kevin.save())
         XCTAssertNoThrow(try bill.save())
+        XCTAssertNoThrow(try simon.save())
+        XCTAssertNoThrow(try kelly.save())
 
         let adults = try Adult
             .makeQuery()
@@ -146,9 +150,9 @@ class DriverTests: XCTestCase {
             .distinct()
             .all()
 
-        XCTAssertEqual(adults.count, 1)
-        XCTAssertEqual(adults.first?.id, try bob.assertExists())
-        XCTAssertEqual(adults.first?.name, "Bob")
+        XCTAssertEqual(adults.count, 2)
+        XCTAssertTrue(adults.contains(where: { $0.id == bob.id }))
+        XCTAssertTrue(adults.contains(where: { $0.id == charlie.id }))
     }
 
     func testOuterJoin() throws {
