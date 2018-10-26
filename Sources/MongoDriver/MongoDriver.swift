@@ -204,7 +204,25 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         
         return document
     }
-    
+
+    private func makeRawComputedProperties<E>(_ query: Fluent.Query<E>) throws -> [String] {
+
+        guard case .fetch(let computedProperties) = query.action else  {
+            return []
+        }
+
+        return try computedProperties.reduce([String](), { result, property in
+            switch property {
+            case .raw(let value, _):
+                var mutableResult = result
+                mutableResult += value
+                return mutableResult
+            case .some:
+                throw Error.unsupported
+            }
+        })
+    }
+
     /// Exequtes a Fluent.Query for an Entity
     ///
     ///
@@ -249,9 +267,24 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         let filter = try makeQuery(query.filters, method: .and)
         let sort = makeSort(query.sorts)
         let (limit, skip) = try makeLimits(query.limits)
+        let rawComputedProperties = try makeRawComputedProperties(query)
+
+        let projectionFields: [String: Projection.ProjectionExpression]
+
+        if !rawComputedProperties.isEmpty {
+            var fields: [String: BSON.Primitive] = rawComputedProperties.reduce([:], { result, property in
+                var mutableResult = result
+                mutableResult[property] = "$$ROOT." + property
+                return mutableResult
+            })
+            fields["_id"] = "$$ROOT._id"
+            projectionFields = [E.name: .custom(fields)]
+        } else {
+            projectionFields = [E.name: "$$ROOT"]
+        }
 
         var pipeline: AggregationPipeline = [
-            .project([E.name: "$$ROOT"]),
+            .project(Projection(projectionFields)),
             .addFields(["_id": "$" + E.name + "._id"])
         ]
 
@@ -268,6 +301,18 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
         }
 
         pipeline.append(.match(filter))
+
+        if query.isDistinct {
+            let groupId: ExpressionRepresentable = rawComputedProperties.isEmpty
+                ? "null"
+                : Document(rawComputedProperties.reduce([:], { result, value in
+                    var mutableResult = result
+                    mutableResult[value] = "$\(E.name).\(value)"
+                    return mutableResult
+                }))
+            pipeline.append(.group(groupId, computed: [E.name: .first("$\(E.name)")]))
+            pipeline.append(.project(Projection(["_id": "$\(E.name)._id", "\(E.name)": "$\(E.name)"])))
+        }
 
         if let sort = sort {
             pipeline.append(.sort(sort))
@@ -286,13 +331,8 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
     private func fetch<E>(_ query: Fluent.Query<E>) throws -> Node {
 
-        guard case .fetch(let computedProperties) = query.action else {
+        guard case .fetch(_) = query.action else {
             throw Error.invalidQuery
-        }
-
-        // TODO: Support ComputedProperties
-        guard computedProperties.isEmpty else {
-            throw Error.unsupported
         }
 
         let collection = self[E.entity]
@@ -419,5 +459,11 @@ extension MongoKitten.Database : Fluent.Driver, Connection {
 
             return true
         }
+    }
+}
+
+extension Projection {
+    init(_ dictionary: [String: Projection.ProjectionExpression]) {
+        self.init(Document(dictionaryElements: dictionary.map { ($0.0, $0.1) }))
     }
 }

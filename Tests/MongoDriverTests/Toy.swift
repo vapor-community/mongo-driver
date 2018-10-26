@@ -12,8 +12,11 @@ final class Toy: Entity {
 
     public let name: String
 
-    public init(name: String) {
+    public let material: String?
+
+    public init(name: String, material: String? = nil) {
         self.name = name
+        self.material = material
     }
 
     // MARK: Storable
@@ -24,7 +27,10 @@ final class Toy: Entity {
 
     public convenience init(row: Row) throws {
 
-        self.init(name: try row.get("name"))
+        self.init(
+            name: try row.get("name"),
+            material: try? row.get("material")
+        )
     }
 
     public func makeRow() throws -> Row {
@@ -33,6 +39,10 @@ final class Toy: Entity {
 
         try row.set(Toy.idKey, self.id)
         try row.set("name", self.name)
+
+        if let material = self.material {
+            try row.set("material", material)
+        }
 
         return row
     }
